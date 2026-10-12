@@ -1,0 +1,15 @@
+{
+  "name": "@ai-tts/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning --watch src/server.js",
+    "start": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning src/server.js",
+    "test": "node --disable-warning=ExperimentalWarning --test 'test/*.test.js'"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "franc-min": "^6.2.0",
+    "nodemailer": "^10.1.0"
+  }
+}

@@ -1,0 +1,347 @@
+{
+  "_comment": "로케일별 원어민 보이스 매핑. 목록 순서 = 우선순위(첫 번째 활성 보이스가 기본값, 실패 시 다른 엔진 보이스로 fallback). provider 'local'은 무료 모델 서버(services/model-server: MeloTTS 한국어 + Kokoro). 상용 보이스 ID는 각 업체 공식 문서에서 최신 여부를 확인하세요.",
+  "locales": {
+    "ko-KR": {
+      "label": "한국어 (대한민국)",
+      "voices": [
+        {
+          "provider": "local",
+          "voiceId": "melo/KR",
+          "name": "MeloTTS 한국어",
+          "gender": "female"
+        },
+        {
+          "provider": "azure",
+          "voiceId": "ko-KR-SunHiNeural",
+          "name": "SunHi",
+          "gender": "female"
+        },
+        {
+          "provider": "azure",
+          "voiceId": "ko-KR-InJoonNeural",
+          "name": "InJoon",
+          "gender": "male"
+        },
+        {
+          "provider": "google",
+          "voiceId": "ko-KR-Neural2-A",
+          "name": "Neural2-A",
+          "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "ko-KR-Neural2-C",
+          "name": "Neural2-C",
+          "gender": "male"
+        }
+      ]
+    },
+    "en-US": {
+      "label": "English (United States)",
+      "voices": [
+        {
+          "provider": "local",
+          "voiceId": "kokoro/af_heart",
+          "name": "Heart (Kokoro)",
+          "gender": "female"
+        },
+        {
+          "provider": "local",
+          "voiceId": "kokoro/af_bella",
+          "name": "Bella (Kokoro)",
+          "gender": "female"
+        },
+        {
+          "provider": "local",
+          "voiceId": "kokoro/am_michael",
+          "name": "Michael (Kokoro)",
+          "gender": "male"
+        },
+        {
+          "provider": "local",
+          "voiceId": "kokoro/am_fenrir",
+          "name": "Fenrir (Kokoro)",
+          "gender": "male"
+        },
+        {
+          "provider": "azure",
+          "voiceId": "en-US-JennyNeural",
+          "name": "Jenny",
+          "gender": "female"
+        },
+        {
+          "provider": "azure",
+          "voiceId": "en-US-GuyNeural",
+          "name": "Guy",
+          "gender": "male"
+        },
+        {
+          "provider": "google",
+          "voiceId": "en-US-Neural2-F",
+          "name": "Neural2-F",
+          "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "en-US-Neural2-D",
+          "name": "Neural2-D",
+          "gender": "male"
+        },
+        {
+          "provider": "elevenlabs",
+          "voiceId": "21m00Tcm4TlvDq8ikWAM",
+          "name": "Rachel",
+          "gender": "female"
+        },
+        {
+          "provider": "openai",
+          "voiceId": "alloy",
+          "name": "Alloy",
+          "gender": "neutral"
+        }
+      ]
+    },
+    "en-GB": {
+      "label": "English (United Kingdom)",
+      "voices": [
+        {
+          "provider": "local",
+          "voiceId": "kokoro/bf_emma",
+          "name": "Emma (Kokoro)",
+          "gender": "female"
+        },
+        {
+          "provider": "local",
+          "voiceId": "kokoro/bm_george",
+          "name": "George (Kokoro)",
+          "gender": "male"
+        },
+        {
+          "provider": "azure",
+          "voiceId": "en-GB-SoniaNeural",
+          "name": "Sonia",
+          "gender": "female"
+        },
+        {
+          "provider": "azure",
+          "voiceId": "en-GB-RyanNeural",
+          "name": "Ryan",
+          "gender": "male"
+        },
+        {
+          "provider": "google",
+          "voiceId": "en-GB-Neural2-A",
+          "name": "Neural2-A",
+          "gender": "female"
+        }
+      ]
+    },
+    "ja-JP": {
+      "label": "日本語 (日本)",
+      "voices": [
+        {
+          "provider": "local",
+          "voiceId": "kokoro/jf_alpha",
+          "name": "Alpha (Kokoro)",
+          "gender": "female"
+        },
+        {
+          "provider": "local",
+          "voiceId": "kokoro/jm_kumo",
+          "name": "Kumo (Kokoro)",
+          "gender": "male"
+        },
+        {
+          "provider": "azure",
+          "voiceId": "ja-JP-NanamiNeural",
+          "name": "Nanami",
+          "gender": "female"
+        },
+        {
+          "provider": "azure",
+          "voiceId": "ja-JP-KeitaNeural",
+          "name": "Keita",
+          "gender": "male"
+        },
+        {
+          "provider": "google",
+          "voiceId": "ja-JP-Neural2-B",
+          "name": "Neural2-B",
+          "gender": "female"
+        }
+      ]
+    },
+    "zh-CN": {
+      "label": "中文 (普通话, 中国大陆)",
+      "voices": [
+        {
+          "provider": "local",
+          "voiceId": "kokoro/zf_xiaoxiao",
+          "name": "Xiaoxiao (Kokoro)",
+          "gender": "female"
+        },
+        {
+          "provider": "local",
+          "voiceId": "kokoro/zm_yunxi",
+          "name": "Yunxi (Kokoro)",
+          "gender": "male"
+        },
+        {
+          "provider": "azure",
+          "voiceId": "zh-CN-XiaoxiaoNeural",
+          "name": "Xiaoxiao",
+          "gender": "female"
+        },
+        {
+          "provider": "azure",
+          "voiceId": "zh-CN-YunxiNeural",
+          "name": "Yunxi",
+          "gender": "male"
+        },
+        {
+          "provider": "google",
+          "voiceId": "cmn-CN-Wavenet-A",
+          "name": "Wavenet-A",
+          "gender": "female",
+          "providerLocale": "cmn-CN"
+        }
+      ]
+    },
+    "es-ES": {
+      "label": "Español (España)",
+      "voices": [
+        {
+          "provider": "local",
+          "voiceId": "kokoro/ef_dora",
+          "name": "Dora (Kokoro)",
+          "gender": "female"
+        },
+        {
+          "provider": "local",
+          "voiceId": "kokoro/em_alex",
+          "name": "Alex (Kokoro)",
+          "gender": "male"
+        },
+        {
+          "provider": "azure",
+          "voiceId": "es-ES-ElviraNeural",
+          "name": "Elvira",
+          "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "es-ES-Neural2-A",
+          "name": "Neural2-A",
+          "gender": "female"
+        }
+      ]
+    },
+    "es-MX": {
+      "label": "Español (México)",
+      "voices": [
+        {
+          "provider": "azure",
+          "voiceId": "es-MX-DaliaNeural",
+          "name": "Dalia",
+          "gender": "female"
+        },
+        {
+          "provider": "azure",
+          "voiceId": "es-MX-JorgeNeural",
+          "name": "Jorge",
+          "gender": "male"
+        }
+      ]
+    },
+    "fr-FR": {
+      "label": "Français (France)",
+      "voices": [
+        {
+          "provider": "local",
+          "voiceId": "kokoro/ff_siwis",
+          "name": "Siwis (Kokoro)",
+          "gender": "female"
+        },
+        {
+          "provider": "azure",
+          "voiceId": "fr-FR-DeniseNeural",
+          "name": "Denise",
+          "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "fr-FR-Neural2-A",
+          "name": "Neural2-A",
+          "gender": "female"
+        }
+      ]
+    },
+    "de-DE": {
+      "label": "Deutsch (Deutschland)",
+      "voices": [
+        {
+          "provider": "azure",
+          "voiceId": "de-DE-KatjaNeural",
+          "name": "Katja",
+          "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "de-DE-Neural2-A",
+          "name": "Neural2-A",
+          "gender": "female"
+        }
+      ]
+    },
+    "pt-BR": {
+      "label": "Português (Brasil)",
+      "voices": [
+        {
+          "provider": "local",
+          "voiceId": "kokoro/pf_dora",
+          "name": "Dora (Kokoro)",
+          "gender": "female"
+        },
+        {
+          "provider": "local",
+          "voiceId": "kokoro/pm_alex",
+          "name": "Alex (Kokoro)",
+          "gender": "male"
+        },
+        {
+          "provider": "azure",
+          "voiceId": "pt-BR-FranciscaNeural",
+          "name": "Francisca",
+          "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "pt-BR-Neural2-A",
+          "name": "Neural2-A",
+          "gender": "female"
+        }
+      ]
+    },
+    "pt-PT": {
+      "label": "Português (Portugal)",
+      "voices": [
+        {
+          "provider": "azure",
+          "voiceId": "pt-PT-RaquelNeural",
+          "name": "Raquel",
+          "gender": "female"
+        }
+      ]
+    }
+  },
+  "defaultLocaleByLanguage": {
+    "ko": "ko-KR",
+    "en": "en-US",
+    "ja": "ja-JP",
+    "zh": "zh-CN",
+    "es": "es-ES",
+    "fr": "fr-FR",
+    "de": "de-DE",
+    "pt": "pt-BR"
+  }
+}

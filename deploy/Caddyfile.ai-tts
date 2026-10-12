@@ -1,0 +1,17 @@
+# /etc/caddy/Caddyfile 에 추가 (Caddy가 HTTPS 인증서 자동 발급)
+ai-tts.hotgarlic.dedyn.io {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+	# API 요청 본문은 텍스트 JSON뿐 (앱 한도 256KB보다 약간 여유)
+	request_body {
+		max_size 512KB
+	}
+	reverse_proxy 127.0.0.1:3300
+}
+

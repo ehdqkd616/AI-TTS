@@ -15,7 +15,7 @@ function Header() {
         <nav>
           <NavLink to="/" end>음성 생성</NavLink>
           <NavLink to="/me">내 정보</NavLink>
-          {user.role === 'admin' && <NavLink to="/admin">관리자</NavLink>}
+          {user.role === 'admin' && <NavLink to="/admin">관리자 페이지</NavLink>}
           <button
             className="link"
             onClick={async () => {

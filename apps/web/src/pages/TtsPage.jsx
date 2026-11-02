@@ -24,6 +24,9 @@ export default function TtsPage() {
   const [voiceId, setVoiceId] = useState('');
   const [speed, setSpeed] = useState(1);
   const [format, setFormat] = useState('mp3');
+  const [voiceModels, setVoiceModels] = useState([]); // 관리자가 올린 RVC 목소리 모델
+  const [voiceModelId, setVoiceModelId] = useState('');
+  const [pitch, setPitch] = useState(0);
   const [normalized, setNormalized] = useState(null); // 사용자가 확인·수정하는 정규화 텍스트
   const [result, setResult] = useState(null);
   const [history, setHistory] = useState([]);
@@ -34,6 +37,7 @@ export default function TtsPage() {
   useEffect(() => {
     api.config().then(setHealth).catch((e) => setError(e.message));
     api.voices().then((d) => setLocales(d.locales)).catch((e) => setError(e.message));
+    api.voiceModels().then((d) => setVoiceModels(d.items)).catch(() => {});
     refreshHistory();
   }, []);
 
@@ -65,6 +69,12 @@ export default function TtsPage() {
   // 원문·언어가 바뀌면 수정해 둔 정규화 텍스트는 무효
   useEffect(() => setNormalized(null), [text, locale]);
 
+  const voiceModel = voiceModels.find((m) => m.id === voiceModelId);
+  function chooseVoiceModel(id) {
+    setVoiceModelId(id);
+    setPitch(voiceModels.find((m) => m.id === id)?.defaultPitch ?? 0); // 모델마다 맞춰 둔 기본 피치부터
+  }
+
   const maxLen = health?.maxTextLength ?? 5000;
   const charCount = useMemo(() => [...text].length, [text]);
   const onlyMock = health && health.providers.filter((p) => p.enabled).every((p) => p.name === 'mock');
@@ -84,7 +94,10 @@ export default function TtsPage() {
     setBusy(true);
     setError('');
     try {
-      const r = await api.tts({ text, locale, voiceId, speed, format, normalizedText: normalized ?? undefined });
+      const r = await api.tts({
+        text, locale, voiceId, speed, format, normalizedText: normalized ?? undefined,
+        ...(voiceModel ? { voiceModelId: voiceModel.id, pitch } : {}),
+      });
       setResult(r);
       refreshHistory();
       refreshMe();
@@ -174,6 +187,27 @@ export default function TtsPage() {
           </div>
         </div>
 
+        {voiceModels.length > 0 && (
+          <div className="controls convert">
+            <label>
+              <span>목소리 변환</span>
+              <select value={voiceModelId} onChange={(e) => chooseVoiceModel(e.target.value)}>
+                <option value="">사용 안 함</option>
+                {voiceModels.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+              {voiceModel && <small className="muted">고른 보이스로 읽은 뒤 이 목소리로 바꿉니다. 시간이 조금 더 걸려요.</small>}
+            </label>
+            {voiceModel && (
+              <label>
+                <span>피치 {pitch > 0 ? `+${pitch}` : pitch} (반음)</span>
+                <input type="range" min="-24" max="24" step="1" value={pitch} onChange={(e) => setPitch(Number(e.target.value))} />
+              </label>
+            )}
+          </div>
+        )}
+
         <div className="normalize">
           {normalized == null ? (
             <button className="link" onClick={previewNormalize} disabled={!text.trim() || !locale}>
@@ -191,7 +225,7 @@ export default function TtsPage() {
         </div>
 
         <button className="primary" onClick={generate} disabled={!canGenerate}>
-          {busy ? '생성 중…' : '음성 생성'}
+          {busy ? (voiceModel ? '생성·목소리 변환 중…' : '생성 중…') : '음성 생성'}
         </button>
         {error && <div className="banner error">{error}</div>}
       </section>
@@ -202,6 +236,9 @@ export default function TtsPage() {
           <div className="meta">
             <span>{labelOf(result.locale)}</span>
             <span>{result.voice.name} · {result.voice.provider}</span>
+            {result.voiceModel && (
+              <span className="tag">→ {result.voiceModel.name} ({result.voiceModel.pitch > 0 ? '+' : ''}{result.voiceModel.pitch})</span>
+            )}
             {result.cached && <span className="tag">캐시</span>}
             {result.fallbackFrom && <span className="tag warn">대체 엔진 사용 ({result.fallbackFrom} 실패)</span>}
           </div>
@@ -219,7 +256,7 @@ export default function TtsPage() {
             <li key={h.id}>
               <div className="h-text" title={h.text}>{h.text}</div>
               <div className="h-meta">
-                {h.locale} · {h.voiceId.split(':')[1]} · {h.speed}x · {fmtDate(h.createdAt)}
+                {h.locale} · {h.voiceId.split(':')[1]}{h.voiceModel ? ` → ${h.voiceModel.name}` : ''} · {h.speed}x · {fmtDate(h.createdAt)}
                 {h.status === 'failed' && <span className="tag error">실패</span>}
               </div>
               {h.audioUrl && (

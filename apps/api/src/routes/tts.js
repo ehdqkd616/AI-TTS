@@ -3,7 +3,7 @@ import { FORMATS } from '../pipeline/mergeAudio.js';
 import { HttpError } from '../lib/errors.js';
 import { requireUser } from '../services/auth.js';
 
-export function ttsRouter({ tts, voices, store, limits }) {
+export function ttsRouter({ tts, voices, store, limits, voiceModels, rvc }) {
   const router = Router();
   // 음성 생성 기능은 승인된 회원만
   router.use(requireUser);
@@ -16,6 +16,15 @@ export function ttsRouter({ tts, voices, store, limits }) {
     res.json({
       maxTextLength: tts.maxTextLength,
       providers: [...tts.providers.values()].map((p) => ({ name: p.name, enabled: p.isEnabled() })),
+      rvcEnabled: rvc.isEnabled(),
+    });
+  });
+
+  // 목소리 변환에 쓸 수 있는 모델 (관리자가 올리고 켜 둔 것만, 파일 정보는 숨김)
+  router.get('/voice-models', (req, res) => {
+    res.json({
+      rvcEnabled: rvc.isEnabled(),
+      items: rvc.isEnabled() ? voiceModels.list().map(({ id, name, defaultPitch, hasIndex }) => ({ id, name, defaultPitch, hasIndex })) : [],
     });
   });
 
@@ -36,7 +45,7 @@ export function ttsRouter({ tts, voices, store, limits }) {
   });
 
   router.post('/tts', rateLimit(limits.synth), async (req, res) => {
-    const { text, locale, voiceId, speed, format, normalizedText } = req.body ?? {};
+    const { text, locale, voiceId, speed, format, normalizedText, voiceModelId, pitch } = req.body ?? {};
     const result = await limits.jobs.run(() =>
       tts.synthesize(
         {
@@ -46,6 +55,8 @@ export function ttsRouter({ tts, voices, store, limits }) {
           speed: speed == null ? 1 : Number(speed),
           format: format || 'mp3',
           normalizedText: normalizedText ?? undefined,
+          voiceModelId: voiceModelId || undefined,
+          pitch: pitch ?? undefined,
           userId: req.user.id,
         },
         // 비용 보호: 캐시에 없어 엔진을 실제로 부를 때만 일일 한도 검사
@@ -84,6 +95,7 @@ export function ttsRouter({ tts, voices, store, limits }) {
         cached: Boolean(g.cached),
         status: g.status,
         createdAt: g.created_at,
+        voiceModel: g.voice_model_id ? { id: g.voice_model_id, name: g.voice_model_name, pitch: g.pitch } : null,
         audioUrl: g.status === 'done' ? `/api/audio/${g.cache_key}.${g.format}` : null,
       })),
     });

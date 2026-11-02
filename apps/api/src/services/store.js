@@ -94,6 +94,14 @@ export class Store {
     const cols = this.db.prepare('PRAGMA table_info(generations)').all().map((c) => c.name);
     if (!cols.includes('user_id')) this.db.exec('ALTER TABLE generations ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE SET NULL');
     this.db.exec('CREATE INDEX IF NOT EXISTS idx_generations_user ON generations (user_id, id)');
+    // 목소리 변환(RVC) 기능 추가 이전 DB 마이그레이션 — 모델은 지워질 수 있어 이름도 함께 남긴다
+    if (!cols.includes('voice_model_id')) {
+      this.db.exec(`
+        ALTER TABLE generations ADD COLUMN voice_model_id TEXT;
+        ALTER TABLE generations ADD COLUMN voice_model_name TEXT;
+        ALTER TABLE generations ADD COLUMN pitch INTEGER;
+      `);
+    }
   }
 
   get(sql, ...params) {
@@ -145,10 +153,12 @@ export class Store {
 
   addGeneration(g) {
     const { lastInsertRowid } = this.run(
-      `INSERT INTO generations (user_id, input_text, normalized, locale, voice_id, provider, speed, format, char_count, cache_key, cached, status, error)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO generations (user_id, input_text, normalized, locale, voice_id, provider, speed, format, char_count, cache_key, cached, status, error,
+                                voice_model_id, voice_model_name, pitch)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       g.userId ?? null, g.text, g.normalized, g.locale, g.voiceId, g.provider, g.speed, g.format, g.charCount, g.cacheKey,
       g.cached ? 1 : 0, g.status, g.error ?? null,
+      g.voiceModel?.id ?? null, g.voiceModel?.name ?? null, g.voiceModel ? g.pitch : null,
     );
     return Number(lastInsertRowid);
   }
@@ -156,7 +166,8 @@ export class Store {
   /** 본인 이력만 — 다른 회원의 입력 텍스트가 노출되지 않도록 */
   listGenerations(userId, limit = 50) {
     return this.all(
-      `SELECT id, input_text, locale, voice_id, provider, speed, format, char_count, cache_key, cached, status, error, created_at
+      `SELECT id, input_text, locale, voice_id, provider, speed, format, char_count, cache_key, cached, status, error, created_at,
+              voice_model_id, voice_model_name, pitch
        FROM generations WHERE user_id = ? ORDER BY id DESC LIMIT ?`,
       userId, limit,
     );

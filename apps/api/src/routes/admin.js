@@ -13,7 +13,7 @@ const ACTION = {
   suspended: () => 'suspend',
 };
 
-export function adminRouter({ store, sessions, limits, adminUsername }) {
+export function adminRouter({ store, sessions, limits, paidGuard, adminUsername }) {
   const router = Router();
   router.use(requireAdmin);
 
@@ -82,10 +82,23 @@ export function adminRouter({ store, sessions, limits, adminUsername }) {
         cached: today.cached ?? 0,
         chars: store.getUsage('global'),
         globalLimit: limits.quota.global,
+
       },
       week,
       topUsers,
     });
+  });
+
+  // 상용 엔진(유료 API) 사용량·한도·긴급 차단 상태
+  router.get('/paid-engines', (req, res) => {
+    res.json(paidGuard.status());
+  });
+
+  router.post('/paid-engines/disabled', (req, res) => {
+    const disabled = req.body?.disabled === true;
+    paidGuard.setDisabled(disabled);
+    store.audit(disabled ? 'admin.paid_engines.disable' : 'admin.paid_engines.enable', { actorId: req.user.id, ip: req.ip });
+    res.json(paidGuard.status());
   });
 
   router.get('/users', (req, res) => {

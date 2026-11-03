@@ -3,7 +3,7 @@ import { FORMATS } from '../pipeline/mergeAudio.js';
 import { HttpError } from '../lib/errors.js';
 import { requireUser } from '../services/auth.js';
 
-export function ttsRouter({ tts, voices, store, limits }) {
+export function ttsRouter({ tts, voices, store, limits, paidGuard }) {
   const router = Router();
   // 음성 생성 기능은 승인된 회원만
   router.use(requireUser);
@@ -49,7 +49,11 @@ export function ttsRouter({ tts, voices, store, limits }) {
           userId: req.user.id,
         },
         // 비용 보호: 캐시에 없어 엔진을 실제로 부를 때만 일일 한도 검사
-        { beforeEngine: (chars) => limits.quota.assertAvailable(req.user, chars) },
+        {
+          beforeEngine: (chars) => limits.quota.assertAvailable(req.user, chars),
+          allowsVoice: (voice, chars) => paidGuard.allows(voice.provider, chars),
+          meterCall: (voice, chars) => paidGuard.meter(voice.provider, chars),
+        },
       ),
     );
     if (!result.cached) limits.quota.record(req.user, result.charCount);

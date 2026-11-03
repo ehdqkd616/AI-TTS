@@ -24,3 +24,12 @@ test('유료 키가 있으면 유료 보이스는 같은 언어의 fallback으�
   assert.equal(ko[0].provider, 'local');
   assert.equal(ko[1].provider, 'azure');
 });
+
+test('Google 키가 있으면 Chirp 3 HD가 1순위, 무료 모델이 그다음', () => {
+  const voices = new VoiceCatalog(createProviders({ MODEL_SERVER_URL: 'http://x', GOOGLE_TTS_API_KEY: 'k' }));
+  const ko = voices.resolve('ko-KR');
+  assert.equal(ko[0].id, 'google:ko-KR-Chirp3-HD-Kore');
+  assert.equal(ko.find((v) => v.provider !== 'google').id, 'local:melo/KR');
+  const zh = voices.resolve('zh-CN');
+  assert.equal(zh[0].providerLocale, 'cmn-CN'); // Google은 중국어 표준어를 cmn-CN으로 받는다
+});

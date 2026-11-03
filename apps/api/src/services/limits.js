@@ -48,7 +48,8 @@ export class Semaphore {
 
 /**
  * 일일 글자 수 한도 (회원별 + 서비스 전체). 사용량은 DB에 저장되어 재시작해도 유지된다.
- * 관리자는 회원별 한도를 받지 않지만 전체 한도(비용 상한)에는 포함된다.
+ * 관리자는 회원별 한도를 받지 않지만 전체 한도에는 포함된다.
+ * 상용 엔진 과금 방지는 별도 — services/paidGuard.js
  */
 export class DailyQuota {
   constructor(store, { perUser, global }) {

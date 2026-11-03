@@ -38,6 +38,53 @@ function useLoad(fn, deps) {
   return { data, error, reload: load };
 }
 
+/** 상용 엔진(유료 API) 과금 방지 패널 — 사용량, 한도, 긴급 차단 */
+function PaidEngines() {
+  const { data, error, reload } = useLoad(() => api.admin.paidEngines(), []);
+  const [busy, setBusy] = useState(false);
+  if (error) return <div className="banner error">{error}</div>;
+  if (!data) return null;
+  const g = data.engines.google;
+  const bar = (used, limit) => Math.min(100, Math.round((used / limit) * 100));
+
+  async function toggle() {
+    const next = !data.disabled;
+    if (next && !window.confirm('상용 엔진(Google 등)을 즉시 모두 멈출까요? 음성은 무료 모델로만 생성됩니다.')) return;
+    setBusy(true);
+    try {
+      await api.admin.setPaidEnginesDisabled(next);
+      reload();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className={`card paid ${data.disabled ? 'stopped' : ''}`}>
+      <div className="paid-head">
+        <h2>Google TTS 사용량 (자동 결제 방지)</h2>
+        <button className={data.disabled ? '' : 'danger'} disabled={busy} onClick={toggle}>
+          {data.disabled ? '상용 엔진 다시 켜기' : '상용 엔진 긴급 차단'}
+        </button>
+      </div>
+      {data.disabled && <div className="banner warn">긴급 차단 중 — Google을 호출하지 않고 무료 모델로만 생성합니다.</div>}
+      {[['오늘', g.today, data.dailyLimit], ['이번 달', g.month, data.monthlyLimit]].map(([label, used, limit]) => (
+        <div key={label} className="meter">
+          <div className="meter-label">
+            <span>{label}</span>
+            <span>{used.toLocaleString()} / {limit.toLocaleString()}자 ({bar(used, limit)}%)</span>
+          </div>
+          <div className="meter-track"><div className={`meter-fill ${bar(used, limit) >= 80 ? 'hot' : ''}`} style={{ width: `${bar(used, limit)}%` }} /></div>
+        </div>
+      ))}
+      <p className="muted small">
+        Google Chirp 3 HD 무료 사용량은 월 100만 자입니다. 한도에 닿으면 Google 호출을 멈추고 무료 모델로 전환하므로 결제되지 않습니다.
+        월 50%·80%·100%, 일 100%에 닿으면 관리자 메일로 알립니다.
+      </p>
+    </section>
+  );
+}
+
 function Dashboard({ onGoUsers }) {
   const { data, error } = useLoad(() => api.admin.stats(), []);
   if (error) return <div className="banner error">{error}</div>;
@@ -53,6 +100,7 @@ function Dashboard({ onGoUsers }) {
         <div className="tile"><span>오늘 생성</span><b>{data.today.generations}</b><small>캐시 {data.today.cached} · 실패 {data.today.failed}</small></div>
         <div className="tile"><span>오늘 엔진 사용</span><b>{data.today.chars.toLocaleString()}자</b><small>전체 한도의 {pct}%</small></div>
       </div>
+      <PaidEngines />
       <section className="card">
         <h2>최근 7일 엔진 사용 글자 수</h2>
         {data.week.length === 0 ? <p className="empty">기록이 없습니다.</p> : (
@@ -299,6 +347,8 @@ const ACTION_LABEL = {
   'admin.user.unsuspend': '정지 해제',
   'admin.user.quota': '한도 변경',
   'admin.user.temp_password': '임시 비밀번호 발급',
+  'admin.paid_engines.disable': '상용 엔진 긴급 차단',
+  'admin.paid_engines.enable': '상용 엔진 다시 켬',
 };
 
 function Audit() {

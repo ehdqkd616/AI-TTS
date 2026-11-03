@@ -1,9 +1,33 @@
 {
-  "_comment": "로케일별 원어민 보이스 매핑. 목록 순서 = 우선순위(첫 번째 활성 보이스가 기본값, 실패 시 다른 엔진 보이스로 fallback). provider 'local'은 무료 모델 서버(services/model-server: MeloTTS 한국어 + Kokoro). 상용 보이스 ID는 각 업체 공식 문서에서 최신 여부를 확인하세요.",
+  "_comment": "로케일별 원어민 보이스 매핑. 목록 순서 = 우선순위(첫 번째 활성 보이스가 기본값, 실패·한도 초과 시 다음 보이스로 fallback). google = Chirp 3 HD(월 무료 사용량 안에서 쓰도록 앱이 일일 한도로 제한), local = 무료 모델 서버(MeloTTS 한국어 + Kokoro). 보이스 ID는 각 업체 공식 문서에서 최신 여부를 확인하세요.",
   "locales": {
     "ko-KR": {
       "label": "한국어 (대한민국)",
       "voices": [
+        {
+          "provider": "google",
+          "voiceId": "ko-KR-Chirp3-HD-Kore",
+          "name": "Kore (Chirp 3 HD)",
+          "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "ko-KR-Chirp3-HD-Aoede",
+          "name": "Aoede (Chirp 3 HD)",
+          "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "ko-KR-Chirp3-HD-Charon",
+          "name": "Charon (Chirp 3 HD)",
+          "gender": "male"
+        },
+        {
+          "provider": "google",
+          "voiceId": "ko-KR-Chirp3-HD-Puck",
+          "name": "Puck (Chirp 3 HD)",
+          "gender": "male"
+        },
         {
           "provider": "local",
           "voiceId": "melo/KR",
@@ -21,24 +45,36 @@
           "voiceId": "ko-KR-InJoonNeural",
           "name": "InJoon",
           "gender": "male"
-        },
-        {
-          "provider": "google",
-          "voiceId": "ko-KR-Neural2-A",
-          "name": "Neural2-A",
-          "gender": "female"
-        },
-        {
-          "provider": "google",
-          "voiceId": "ko-KR-Neural2-C",
-          "name": "Neural2-C",
-          "gender": "male"
         }
       ]
     },
     "en-US": {
       "label": "English (United States)",
       "voices": [
+        {
+          "provider": "google",
+          "voiceId": "en-US-Chirp3-HD-Kore",
+          "name": "Kore (Chirp 3 HD)",
+          "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "en-US-Chirp3-HD-Aoede",
+          "name": "Aoede (Chirp 3 HD)",
+          "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "en-US-Chirp3-HD-Charon",
+          "name": "Charon (Chirp 3 HD)",
+          "gender": "male"
+        },
+        {
+          "provider": "google",
+          "voiceId": "en-US-Chirp3-HD-Puck",
+          "name": "Puck (Chirp 3 HD)",
+          "gender": "male"
+        },
         {
           "provider": "local",
           "voiceId": "kokoro/af_heart",
@@ -76,18 +112,6 @@
           "gender": "male"
         },
         {
-          "provider": "google",
-          "voiceId": "en-US-Neural2-F",
-          "name": "Neural2-F",
-          "gender": "female"
-        },
-        {
-          "provider": "google",
-          "voiceId": "en-US-Neural2-D",
-          "name": "Neural2-D",
-          "gender": "male"
-        },
-        {
           "provider": "elevenlabs",
           "voiceId": "21m00Tcm4TlvDq8ikWAM",
           "name": "Rachel",
@@ -104,6 +128,30 @@
     "en-GB": {
       "label": "English (United Kingdom)",
       "voices": [
+        {
+          "provider": "google",
+          "voiceId": "en-GB-Chirp3-HD-Kore",
+          "name": "Kore (Chirp 3 HD)",
+          "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "en-GB-Chirp3-HD-Aoede",
+          "name": "Aoede (Chirp 3 HD)",
+          "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "en-GB-Chirp3-HD-Charon",
+          "name": "Charon (Chirp 3 HD)",
+          "gender": "male"
+        },
+        {
+          "provider": "google",
+          "voiceId": "en-GB-Chirp3-HD-Puck",
+          "name": "Puck (Chirp 3 HD)",
+          "gender": "male"
+        },
         {
           "provider": "local",
           "voiceId": "kokoro/bf_emma",
@@ -127,18 +175,94 @@
           "voiceId": "en-GB-RyanNeural",
           "name": "Ryan",
           "gender": "male"
+        }
+      ]
+    },
+    "en-AU": {
+      "label": "English (Australia)",
+      "voices": [
+        {
+          "provider": "google",
+          "voiceId": "en-AU-Chirp3-HD-Kore",
+          "name": "Kore (Chirp 3 HD)",
+          "gender": "female"
         },
         {
           "provider": "google",
-          "voiceId": "en-GB-Neural2-A",
-          "name": "Neural2-A",
+          "voiceId": "en-AU-Chirp3-HD-Aoede",
+          "name": "Aoede (Chirp 3 HD)",
           "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "en-AU-Chirp3-HD-Charon",
+          "name": "Charon (Chirp 3 HD)",
+          "gender": "male"
+        },
+        {
+          "provider": "google",
+          "voiceId": "en-AU-Chirp3-HD-Puck",
+          "name": "Puck (Chirp 3 HD)",
+          "gender": "male"
+        }
+      ]
+    },
+    "en-IN": {
+      "label": "English (India)",
+      "voices": [
+        {
+          "provider": "google",
+          "voiceId": "en-IN-Chirp3-HD-Kore",
+          "name": "Kore (Chirp 3 HD)",
+          "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "en-IN-Chirp3-HD-Aoede",
+          "name": "Aoede (Chirp 3 HD)",
+          "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "en-IN-Chirp3-HD-Charon",
+          "name": "Charon (Chirp 3 HD)",
+          "gender": "male"
+        },
+        {
+          "provider": "google",
+          "voiceId": "en-IN-Chirp3-HD-Puck",
+          "name": "Puck (Chirp 3 HD)",
+          "gender": "male"
         }
       ]
     },
     "ja-JP": {
       "label": "日本語 (日本)",
       "voices": [
+        {
+          "provider": "google",
+          "voiceId": "ja-JP-Chirp3-HD-Kore",
+          "name": "Kore (Chirp 3 HD)",
+          "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "ja-JP-Chirp3-HD-Aoede",
+          "name": "Aoede (Chirp 3 HD)",
+          "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "ja-JP-Chirp3-HD-Charon",
+          "name": "Charon (Chirp 3 HD)",
+          "gender": "male"
+        },
+        {
+          "provider": "google",
+          "voiceId": "ja-JP-Chirp3-HD-Puck",
+          "name": "Puck (Chirp 3 HD)",
+          "gender": "male"
+        },
         {
           "provider": "local",
           "voiceId": "kokoro/jf_alpha",
@@ -162,18 +286,40 @@
           "voiceId": "ja-JP-KeitaNeural",
           "name": "Keita",
           "gender": "male"
-        },
-        {
-          "provider": "google",
-          "voiceId": "ja-JP-Neural2-B",
-          "name": "Neural2-B",
-          "gender": "female"
         }
       ]
     },
     "zh-CN": {
       "label": "中文 (普通话, 中国大陆)",
       "voices": [
+        {
+          "provider": "google",
+          "voiceId": "cmn-CN-Chirp3-HD-Kore",
+          "name": "Kore (Chirp 3 HD)",
+          "gender": "female",
+          "providerLocale": "cmn-CN"
+        },
+        {
+          "provider": "google",
+          "voiceId": "cmn-CN-Chirp3-HD-Aoede",
+          "name": "Aoede (Chirp 3 HD)",
+          "gender": "female",
+          "providerLocale": "cmn-CN"
+        },
+        {
+          "provider": "google",
+          "voiceId": "cmn-CN-Chirp3-HD-Charon",
+          "name": "Charon (Chirp 3 HD)",
+          "gender": "male",
+          "providerLocale": "cmn-CN"
+        },
+        {
+          "provider": "google",
+          "voiceId": "cmn-CN-Chirp3-HD-Puck",
+          "name": "Puck (Chirp 3 HD)",
+          "gender": "male",
+          "providerLocale": "cmn-CN"
+        },
         {
           "provider": "local",
           "voiceId": "kokoro/zf_xiaoxiao",
@@ -197,19 +343,36 @@
           "voiceId": "zh-CN-YunxiNeural",
           "name": "Yunxi",
           "gender": "male"
-        },
-        {
-          "provider": "google",
-          "voiceId": "cmn-CN-Wavenet-A",
-          "name": "Wavenet-A",
-          "gender": "female",
-          "providerLocale": "cmn-CN"
         }
       ]
     },
     "es-ES": {
       "label": "Español (España)",
       "voices": [
+        {
+          "provider": "google",
+          "voiceId": "es-ES-Chirp3-HD-Kore",
+          "name": "Kore (Chirp 3 HD)",
+          "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "es-ES-Chirp3-HD-Aoede",
+          "name": "Aoede (Chirp 3 HD)",
+          "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "es-ES-Chirp3-HD-Charon",
+          "name": "Charon (Chirp 3 HD)",
+          "gender": "male"
+        },
+        {
+          "provider": "google",
+          "voiceId": "es-ES-Chirp3-HD-Puck",
+          "name": "Puck (Chirp 3 HD)",
+          "gender": "male"
+        },
         {
           "provider": "local",
           "voiceId": "kokoro/ef_dora",
@@ -227,12 +390,35 @@
           "voiceId": "es-ES-ElviraNeural",
           "name": "Elvira",
           "gender": "female"
+        }
+      ]
+    },
+    "es-US": {
+      "label": "Español (Estados Unidos/Latinoamérica)",
+      "voices": [
+        {
+          "provider": "google",
+          "voiceId": "es-US-Chirp3-HD-Kore",
+          "name": "Kore (Chirp 3 HD)",
+          "gender": "female"
         },
         {
           "provider": "google",
-          "voiceId": "es-ES-Neural2-A",
-          "name": "Neural2-A",
+          "voiceId": "es-US-Chirp3-HD-Aoede",
+          "name": "Aoede (Chirp 3 HD)",
           "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "es-US-Chirp3-HD-Charon",
+          "name": "Charon (Chirp 3 HD)",
+          "gender": "male"
+        },
+        {
+          "provider": "google",
+          "voiceId": "es-US-Chirp3-HD-Puck",
+          "name": "Puck (Chirp 3 HD)",
+          "gender": "male"
         }
       ]
     },
@@ -257,6 +443,30 @@
       "label": "Français (France)",
       "voices": [
         {
+          "provider": "google",
+          "voiceId": "fr-FR-Chirp3-HD-Kore",
+          "name": "Kore (Chirp 3 HD)",
+          "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "fr-FR-Chirp3-HD-Aoede",
+          "name": "Aoede (Chirp 3 HD)",
+          "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "fr-FR-Chirp3-HD-Charon",
+          "name": "Charon (Chirp 3 HD)",
+          "gender": "male"
+        },
+        {
+          "provider": "google",
+          "voiceId": "fr-FR-Chirp3-HD-Puck",
+          "name": "Puck (Chirp 3 HD)",
+          "gender": "male"
+        },
+        {
           "provider": "local",
           "voiceId": "kokoro/ff_siwis",
           "name": "Siwis (Kokoro)",
@@ -267,12 +477,6 @@
           "voiceId": "fr-FR-DeniseNeural",
           "name": "Denise",
           "gender": "female"
-        },
-        {
-          "provider": "google",
-          "voiceId": "fr-FR-Neural2-A",
-          "name": "Neural2-A",
-          "gender": "female"
         }
       ]
     },
@@ -280,15 +484,33 @@
       "label": "Deutsch (Deutschland)",
       "voices": [
         {
-          "provider": "azure",
-          "voiceId": "de-DE-KatjaNeural",
-          "name": "Katja",
+          "provider": "google",
+          "voiceId": "de-DE-Chirp3-HD-Kore",
+          "name": "Kore (Chirp 3 HD)",
           "gender": "female"
         },
         {
           "provider": "google",
-          "voiceId": "de-DE-Neural2-A",
-          "name": "Neural2-A",
+          "voiceId": "de-DE-Chirp3-HD-Aoede",
+          "name": "Aoede (Chirp 3 HD)",
+          "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "de-DE-Chirp3-HD-Charon",
+          "name": "Charon (Chirp 3 HD)",
+          "gender": "male"
+        },
+        {
+          "provider": "google",
+          "voiceId": "de-DE-Chirp3-HD-Puck",
+          "name": "Puck (Chirp 3 HD)",
+          "gender": "male"
+        },
+        {
+          "provider": "azure",
+          "voiceId": "de-DE-KatjaNeural",
+          "name": "Katja",
           "gender": "female"
         }
       ]
@@ -296,6 +518,30 @@
     "pt-BR": {
       "label": "Português (Brasil)",
       "voices": [
+        {
+          "provider": "google",
+          "voiceId": "pt-BR-Chirp3-HD-Kore",
+          "name": "Kore (Chirp 3 HD)",
+          "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "pt-BR-Chirp3-HD-Aoede",
+          "name": "Aoede (Chirp 3 HD)",
+          "gender": "female"
+        },
+        {
+          "provider": "google",
+          "voiceId": "pt-BR-Chirp3-HD-Charon",
+          "name": "Charon (Chirp 3 HD)",
+          "gender": "male"
+        },
+        {
+          "provider": "google",
+          "voiceId": "pt-BR-Chirp3-HD-Puck",
+          "name": "Puck (Chirp 3 HD)",
+          "gender": "male"
+        },
         {
           "provider": "local",
           "voiceId": "kokoro/pf_dora",
@@ -312,12 +558,6 @@
           "provider": "azure",
           "voiceId": "pt-BR-FranciscaNeural",
           "name": "Francisca",
-          "gender": "female"
-        },
-        {
-          "provider": "google",
-          "voiceId": "pt-BR-Neural2-A",
-          "name": "Neural2-A",
           "gender": "female"
         }
       ]

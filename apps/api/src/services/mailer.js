@@ -98,8 +98,39 @@ export function createMailer(env = process.env, logger = console) {
   const recipients = (env.ADMIN_NOTIFY_EMAILS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
   const publicWebUrl = env.PUBLIC_WEB_URL || 'http://localhost:5173';
   let transport = null;
+  const getTransport = () =>
+    (transport ??= nodemailer.createTransport({
+      host: smtp.host,
+      port: smtp.port,
+      secure: smtp.port === 465, // 587은 STARTTLS
+      requireTLS: smtp.port !== 465,
+      auth: { user: smtp.user, pass: smtp.password },
+      connectionTimeout: 20_000,
+    }));
 
   return {
+    /** 비용 경고 등 관리자 알림 (간단한 텍스트 메일) */
+    async sendAdminAlert(subject, lines) {
+      if (!smtp.user || !smtp.password || !recipients.length) {
+        logger.warn?.(`[mail] SMTP 설정이 없어 관리자 알림을 건너뜁니다: ${subject}`);
+        return 'SKIPPED';
+      }
+      const text = [...lines, '', `관리자 페이지: ${publicWebUrl.replace(/\/$/, '')}/admin`].join('\n');
+      try {
+        await getTransport().sendMail({
+          from: { name: `${APP_NAME} 알림`, address: smtp.from || smtp.user },
+          to: recipients,
+          subject: `[${APP_NAME}] ${subject}`,
+          text,
+        });
+        logger.log?.(`[mail] 관리자 알림 발송: ${subject}`);
+        return 'SENT';
+      } catch (err) {
+        logger.error?.(`[mail] 관리자 알림 발송 실패: ${subject}`, err);
+        return 'FAILED';
+      }
+    },
+
     /** @returns {Promise<'SENT'|'SKIPPED'|'FAILED'>} */
     async sendSignupNotification(u) {
       if (!smtp.user || !smtp.password) {
@@ -107,17 +138,9 @@ export function createMailer(env = process.env, logger = console) {
         return 'SKIPPED';
       }
       if (!recipients.length) return 'SKIPPED';
-      transport ??= nodemailer.createTransport({
-        host: smtp.host,
-        port: smtp.port,
-        secure: smtp.port === 465, // 587은 STARTTLS
-        requireTLS: smtp.port !== 465,
-        auth: { user: smtp.user, pass: smtp.password },
-        connectionTimeout: 20_000,
-      });
       const m = buildSignupMail(u, publicWebUrl);
       try {
-        await transport.sendMail({
+        await getTransport().sendMail({
           from: { name: `${APP_NAME} 알림`, address: smtp.from || smtp.user },
           to: recipients,
           subject: m.subject,

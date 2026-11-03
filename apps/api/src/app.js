@@ -7,6 +7,7 @@ import { VoiceCatalog } from './services/voices.js';
 import { Store } from './services/store.js';
 import { TtsService } from './services/tts.js';
 import { RateLimiter, Semaphore, DailyQuota } from './services/limits.js';
+import { PaidEngineGuard } from './services/paidGuard.js';
 import { Sessions, LoginGuard, ensureAdmin, adminUsernameOf } from './services/auth.js';
 import { createMailer } from './services/mailer.js';
 import { ttsRouter } from './routes/tts.js';
@@ -44,6 +45,16 @@ export async function createApp({ env = process.env, storageDir, logger = consol
   const sessions = new Sessions(store, { days: num(env.SESSION_DAYS, 7) });
   const loginGuard = new LoginGuard({ maxFailures: 5, lockMinutes: 15 });
   mailer ??= createMailer(env, logger);
+  // 상용 엔진 자동 결제 방지: Google Chirp 3 HD 무료 사용량 월 100만 자 기준
+  //   일 3만 자(31일 × 3만 = 93만), 월 90만 자(10% 여유 — 서버 시간과 Google 청구 기준 시간대 차이 포함)
+  //   .env 값을 잘못 넣어도(예: 0 하나 더) 무료 사용량을 넘지 못하게 코드에서 상한을 고정한다
+  const PAID_MONTHLY_HARD_CAP = 950_000;
+  const monthly = Math.min(num(env.PAID_ENGINE_MONTHLY_CHAR_LIMIT, 900_000), PAID_MONTHLY_HARD_CAP);
+  const daily = Math.min(num(env.PAID_ENGINE_DAILY_CHAR_LIMIT, 30_000), monthly);
+  if (monthly < num(env.PAID_ENGINE_MONTHLY_CHAR_LIMIT, 0)) {
+    logger.warn?.(`PAID_ENGINE_MONTHLY_CHAR_LIMIT가 무료 사용량 기준 상한을 넘어 ${PAID_MONTHLY_HARD_CAP.toLocaleString()}자로 고정합니다.`);
+  }
+  const paidGuard = new PaidEngineGuard(store, { daily, monthly, mailer, logger });
 
   const app = express();
   app.disable('x-powered-by');
@@ -56,8 +67,8 @@ export async function createApp({ env = process.env, storageDir, logger = consol
 
   app.get('/api/health', (req, res) => res.json({ ok: true }));
   app.use('/api/auth', authRouter({ store, sessions, loginGuard, limits, mailer, logger, adminUsername: adminUsernameOf(env) }));
-  app.use('/api/admin', adminRouter({ store, sessions, limits, adminUsername: adminUsernameOf(env) }));
-  app.use('/api', ttsRouter({ tts, voices, store, limits }));
+  app.use('/api/admin', adminRouter({ store, sessions, limits, paidGuard, adminUsername: adminUsernameOf(env) }));
+  app.use('/api', ttsRouter({ tts, voices, store, limits, paidGuard }));
 
   // 프로덕션: 빌드된 React 앱 서빙
   const webDist = path.join(here, '..', '..', 'web', 'dist');
@@ -81,5 +92,5 @@ export async function createApp({ env = process.env, storageDir, logger = consol
     });
   });
 
-  return { app, providers, voices, store, tts, limits, sessions, loginGuard };
+  return { app, providers, voices, store, tts, limits, sessions, loginGuard, paidGuard };
 }

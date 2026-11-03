@@ -25,8 +25,22 @@ npm run dev                              # API :3001 + 웹 :5173 (http://localho
 - 앱은 pm2 프로세스 `ai-tts`로 **127.0.0.1:3300**에만 바인딩된다. 외부 접근은 Caddy(HTTPS)만 가능.
   pm2 목록은 `pm2 save`로 저장되어 있어 재부팅 시 `pm2-rudy` 서비스가 다시 띄운다.
 - 비밀값·포트는 `apps/api/.env`(권한 600, git 제외). 형식은 `apps/api/.env.example`.
-- **TTS 엔진은 무료 모델 서버**(pm2 `ai-tts-models`, 127.0.0.1:8020)를 쓴다 — 아래 '무료 모델 서버' 참고.
-  유료 엔진 키를 `.env`에 추가하면 같은 언어의 대체(fallback) 엔진으로 붙는다. 변경 후 `pm2 restart ai-tts`.
+- **TTS 엔진**: 1순위 **Google Cloud TTS Chirp 3 HD**(프로젝트 `tts-project-513311`, 키는 TTS API 전용 + 서버 IP 제한),
+  2순위 **무료 모델 서버**(pm2 `ai-tts-models`) — 아래 '무료 모델 서버' 참고. 변경 후 `pm2 restart ai-tts`.
+  - **자동 결제 방지 (여러 겹)** — `apps/api/src/services/paidGuard.js`. Chirp 3 HD 무료 사용량은 월 100만 자.
+    1. 일일 한도 `PAID_ENGINE_DAILY_CHAR_LIMIT=30000` (31일 × 3만 = 93만)
+    2. 월간 한도 `PAID_ENGINE_MONTHLY_CHAR_LIMIT=900000` (10% 여유 — 서버 시간과 Google 청구 시간대 차이 포함)
+    3. 코드 상한: `.env`를 잘못 넣어도 월 95만 자를 넘지 못함
+    4. 호출 단위 계측: 청크를 보낼 때마다(재시도 포함) 보내기 **전에** 먼저 차감 — 실패한 요청도 센다(보수적)
+    5. 긴급 차단 스위치: 관리자 대시보드 "상용 엔진 긴급 차단" (DB 저장, 재시작해도 유지, 감사 로그)
+    6. 경고 메일: 월 50%·80%·100%, 일 100% 도달 시 `ADMIN_NOTIFY_EMAILS`로 한 번씩
+    7. API 키: Text-to-Speech API 전용 + 서버 IP(116.44.68.248)만 허용 → 유출돼도 다른 곳에서 못 씀
+    8. Google 콘솔 예산 알림(1,000원, 알림만) — 하루 이상 늦을 수 있는 보조 장치.
+       Google의 "지출 한도 적용"(자동 사용 중지) 예산은 2026-10 기준 Cloud Run·Gemini 등 일부 서비스만 지원하고
+       Text-to-Speech는 대상이 아니어서, 실제 차단은 앱(1~5)이 맡는다.
+
+    한도·차단에 걸리면 Google을 부르지 않고 같은 언어의 무료 모델로 전환한다.
+    무료 모델이 없는 언어(호주·인도 영어, 미국 스페인어)는 "오늘 한도 도달"(429)로 막힌다.
 - Caddy 설정: `deploy/Caddyfile.ai-tts` (보안 헤더, 요청 본문 512KB 제한).
 - 캐시 음성·이력 DB: `apps/api/storage/` (권한 700).
 

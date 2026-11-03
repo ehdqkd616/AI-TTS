@@ -48,6 +48,8 @@ export const api = {
 
   // 관리자
   admin: {
+    paidEngines: () => get('/admin/paid-engines'),
+    setPaidEnginesDisabled: (disabled) => post('/admin/paid-engines/disabled', { disabled }),
     stats: () => get('/admin/stats'),
     users: (filter) => get(`/admin/users${qs(filter)}`),
     user: (id) => get(`/admin/users/${id}`),

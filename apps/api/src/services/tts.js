@@ -47,10 +47,16 @@ export class TtsService {
    * 전체 파이프라인.
    * @param {{text: string, locale?: string, voiceId?: string, speed?: number, format?: string, normalizedText?: string}} req
    *   normalizedText: 사용자가 미리보기에서 직접 고친 정규화 결과 (있으면 자동 정규화 생략)
-   * @param {{beforeEngine?: (chars: number) => void}} hooks
-   *   beforeEngine: 캐시에 없어 엔진을 실제로 부르기 직전 호출 (사용량 한도 검사용, 던지면 중단)
+   * @param {{beforeEngine?: (chars: number) => void, allowsVoice?: (voice: object, chars: number) => boolean,
+   *          meterCall?: (voice: object, chars: number) => void}} hooks
+   *   beforeEngine: 캐시에 없어 엔진을 실제로 부르기 직전 호출 (회원·전체 한도 검사, 던지면 중단)
+   *   allowsVoice: false면 그 보이스는 건너뛰고 다음 후보로 (상용 엔진 한도·차단 시 무료 모델로)
+   *   meterCall: 엔진에 요청을 보내기 직전(재시도마다) 호출 — 과금 계측. engineLimit 에러를 던지면 다음 후보로
    */
-  async synthesize({ text, locale, voiceId, speed = 1, format = 'mp3', normalizedText, userId }, { beforeEngine } = {}) {
+  async synthesize(
+    { text, locale, voiceId, speed = 1, format = 'mp3', normalizedText, userId },
+    { beforeEngine, allowsVoice, meterCall } = {},
+  ) {
     this.validate({ text, speed, format });
     if (normalizedText != null) this.validate({ text: normalizedText, speed, format });
 
@@ -73,13 +79,22 @@ export class TtsService {
     const errors = [];
     for (const voice of candidates) {
       const provider = this.providers.get(voice.provider);
+      if (allowsVoice && !allowsVoice(voice, base.charCount)) {
+        errors.push(`${voice.id}: engine limit`);
+        continue;
+      }
       try {
         const chunks = splitIntoChunks(normalized, resolvedLocale, provider.maxChars); // ③
         const engineSpeed = provider.supportsSpeed ? speed : 1;
         const buffers = [];
         for (const chunk of chunks) {
           // ⑤ Provider 호출 (순차: 업체 동시 요청 한도 보호)
-          buffers.push(await withRetry(() => provider.synthesize(chunk, resolvedLocale, voice, { speed: engineSpeed })));
+          buffers.push(
+            await withRetry(() => {
+              meterCall?.(voice, [...chunk].length);
+              return provider.synthesize(chunk, resolvedLocale, voice, { speed: engineSpeed });
+            }),
+          );
         }
         // ⑥ 병합·후처리
         const audio = await mergeAudio(buffers, { format, gapMs: this.gapMs, tempo: provider.supportsSpeed ? 1 : speed });
@@ -96,11 +111,14 @@ export class TtsService {
         };
       } catch (err) {
         this.logger.warn?.(`TTS failed with ${voice.id}: ${err.message}`);
-        errors.push(`${voice.id}: ${err.message}`);
+        errors.push(err.engineLimit ? `${voice.id}: engine limit` : `${voice.id}: ${err.message}`);
       }
     }
 
     this.store.addGeneration({ ...base, voiceId: candidates[0].id, provider: candidates[0].provider, cacheKey: primaryKey, cached: false, status: 'failed', error: errors.join(' | ').slice(0, 1000) });
+    if (errors.every((e) => e.endsWith('engine limit'))) {
+      throw new HttpError(429, '오늘 이 언어의 음성 생성 한도에 도달했습니다. 내일 다시 이용해 주세요.', 'ENGINE_QUOTA');
+    }
     throw new HttpError(502, '음성 생성에 실패했습니다. 잠시 후 다시 시도하세요.', 'SYNTHESIS_FAILED');
   }
 

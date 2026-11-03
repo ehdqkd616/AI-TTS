@@ -89,6 +89,12 @@ export class Store {
         chars_used  INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (subject, usage_date)
       );
+
+      CREATE TABLE IF NOT EXISTS settings (
+        key         TEXT PRIMARY KEY,
+        value       TEXT NOT NULL,
+        updated_at  INTEGER NOT NULL
+      );
     `);
     // 회원 기능 이전 DB 마이그레이션
     const cols = this.db.prepare('PRAGMA table_info(generations)').all().map((c) => c.name);
@@ -173,11 +179,34 @@ export class Store {
     return this.get(`SELECT chars_used FROM usage_daily WHERE subject = ? AND usage_date = date('now', 'localtime')`, subject)?.chars_used ?? 0;
   }
 
+  /** 이번 달(서버 시간 기준) 누적 */
+  getMonthlyUsage(subject) {
+    return this.get(
+      `SELECT COALESCE(SUM(chars_used), 0) n FROM usage_daily
+       WHERE subject = ? AND substr(usage_date, 1, 7) = strftime('%Y-%m', 'now', 'localtime')`,
+      subject,
+    ).n;
+  }
+
   addUsage(subject, chars) {
     this.run(
       `INSERT INTO usage_daily (subject, usage_date, chars_used) VALUES (?, date('now', 'localtime'), ?)
        ON CONFLICT (subject, usage_date) DO UPDATE SET chars_used = chars_used + excluded.chars_used`,
       subject, chars,
+    );
+  }
+
+  // ── 설정 (긴급 차단 스위치, 경고 메일 발송 기록 등) ──────────
+
+  getSetting(key) {
+    return this.get('SELECT value FROM settings WHERE key = ?', key)?.value ?? null;
+  }
+
+  setSetting(key, value) {
+    this.run(
+      `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      key, String(value), Date.now(),
     );
   }
 

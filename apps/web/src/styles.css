@@ -176,3 +176,16 @@ table.grid .num { text-align: right; }
 .ellipsis { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scroll-x { overflow-x: auto; }
 .grid a { color: var(--accent); }
+
+/* 상용 엔진 사용량 패널 */
+.paid-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.paid-head h2 { margin: 0; }
+.paid-head button {
+  background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; font: inherit; font-size: 13px; color: var(--text); cursor: pointer;
+}
+.card.paid.stopped { border-color: var(--warn-text); }
+.meter { margin: 10px 0; }
+.meter-label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+.meter-track { height: 8px; background: var(--bg); border-radius: 99px; overflow: hidden; border: 1px solid var(--line); }
+.meter-fill { height: 100%; background: var(--accent); }
+.meter-fill.hot { background: var(--err-text); }

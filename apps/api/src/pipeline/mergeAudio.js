@@ -53,3 +53,15 @@ export async function mergeAudio(buffers, { format = 'mp3', gapMs = 200, tempo =
     await rm(dir, { recursive: true, force: true });
   }
 }
+
+/**
+ * 이미 하나로 합쳐진 오디오(예: RVC 변환 결과 WAV)를 최종 포맷으로 인코딩.
+ * RVC 출력은 40k/48kHz라 24kHz로 낮추지 않고 48kHz로 낸다
+ * (loudnorm은 출력 샘플레이트를 지정하지 않으면 192kHz로 올려 버린다).
+ */
+export async function encodeAudio(buffer, { format = 'mp3' } = {}) {
+  return runFfmpeg(
+    ['-i', 'pipe:0', '-ac', '1', '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-ar', '48000', ...FORMATS[format].args, 'pipe:1'],
+    buffer,
+  );
+}

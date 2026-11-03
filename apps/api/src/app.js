@@ -13,6 +13,9 @@ import { createMailer } from './services/mailer.js';
 import { ttsRouter } from './routes/tts.js';
 import { authRouter } from './routes/auth.js';
 import { adminRouter } from './routes/admin.js';
+import { voiceModelsAdminRouter } from './routes/voiceModels.js';
+import { VoiceModels } from './services/voiceModels.js';
+import { RvcConverter } from './services/rvc.js';
 import { securityHeaders, csrfGuard } from './lib/securityHeaders.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -20,12 +23,21 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export async function createApp({ env = process.env, storageDir, logger = console, mailer } = {}) {
   const providers = createProviders(env);
   const voices = new VoiceCatalog(providers, env.VOICES_CONFIG || undefined);
-  const store = new Store(storageDir ?? (env.STORAGE_DIR || path.join(here, '..', 'storage')));
+  const storageRoot = storageDir ?? (env.STORAGE_DIR || path.join(here, '..', 'storage'));
+  const store = new Store(storageRoot);
   await ensureAdmin(store, env, logger);
+  const mb = (v, d) => (Number(v) > 0 ? Number(v) : d) * 1024 * 1024;
+  const voiceModels = new VoiceModels(store, path.join(storageRoot, 'voice-models'), {
+    maxModelBytes: mb(env.VOICE_MODEL_MAX_MB, 300),
+    maxIndexBytes: mb(env.VOICE_INDEX_MAX_MB, 1024),
+  });
+  const rvc = new RvcConverter(env, { logger });
   const tts = new TtsService({
     providers,
     voices,
     store,
+    voiceModels,
+    rvc,
     logger,
     maxTextLength: Number(env.MAX_TEXT_LENGTH) || 5000,
   });
@@ -67,8 +79,9 @@ export async function createApp({ env = process.env, storageDir, logger = consol
 
   app.get('/api/health', (req, res) => res.json({ ok: true }));
   app.use('/api/auth', authRouter({ store, sessions, loginGuard, limits, mailer, logger, adminUsername: adminUsernameOf(env) }));
+  app.use('/api/admin/voice-models', voiceModelsAdminRouter({ store, voiceModels, rvc }));
   app.use('/api/admin', adminRouter({ store, sessions, limits, paidGuard, adminUsername: adminUsernameOf(env) }));
-  app.use('/api', ttsRouter({ tts, voices, store, limits, paidGuard }));
+  app.use('/api', ttsRouter({ tts, voices, store, limits, paidGuard, voiceModels, rvc }));
 
   // 프로덕션: 빌드된 React 앱 서빙
   const webDist = path.join(here, '..', '..', 'web', 'dist');
@@ -92,5 +105,5 @@ export async function createApp({ env = process.env, storageDir, logger = consol
     });
   });
 
-  return { app, providers, voices, store, tts, limits, sessions, loginGuard, paidGuard };
+  return { app, providers, voices, store, tts, limits, sessions, loginGuard, paidGuard, voiceModels, rvc };
 }

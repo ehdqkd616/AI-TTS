@@ -69,6 +69,27 @@ pm2 logs ai-tts-models
 curl -s 127.0.0.1:8020/health                         # 로드된 모델 확인
 ```
 
+## 목소리 변환 (RVC)
+
+관리자가 RVC로 학습한 목소리 모델(`.pth` + 선택 `.index`)을 올려 두면, 회원은 음성 생성 화면의 **목소리 변환**에서
+골라 TTS 결과를 그 목소리로 바꿔 받을 수 있다. 흐름: 보이스로 읽기(MeloTTS 등) → WAV로 병합 → RVC 변환 → 최종 포맷 인코딩.
+
+- **RVC 엔진은 새로 설치하지 않는다.** [RVC-Learning](../RVC-Learning)의 RVC WebUI 폴더를 `RVC_ROOT`로 지정하면
+  그 안의 `.venv` 파이썬으로 `infer/cli.py`를 호출한다(GTX 1050 Ti에 맞춘 PyTorch가 이미 깔린 환경).
+  ```bash
+  # apps/api/.env
+  RVC_ROOT=/home/rudy/git-repository/RVC-Learning/Retrieval-based-Voice-Conversion-WebUI-main
+  ```
+  `pm2 restart ai-tts` 후 관리자 페이지 → **목소리 모델** 탭에서 경고가 사라지면 켜진 것이다.
+- **업로드는 관리자 전용.** `.pth`는 PyTorch pickle 파일이라 불러올 때 코드가 실행될 수 있어서, 회원에게는 업로드를 열지 않는다.
+  업로드 직후 RVC로 실제로 열어 보는 검사(`--list-speakers`)를 하고, 실패하면 파일을 지운다.
+- **GPU는 하나.** 이 서버 안에서는 변환을 한 번에 하나씩 처리하고 대기열(`RVC_MAX_QUEUE`)이 차면 503을 돌려준다.
+  RVC WebUI·AI-Voice-Cover와 같은 GPU를 쓰므로, 그쪽 작업과 동시에 돌면 VRAM 부족으로 실패할 수 있다(실패는 생성 내역에 `rvc:` 사유로 남는다).
+- **피치**: 기본 한국어 보이스(MeloTTS)가 여성 목소리라, 남성 모델은 기본 피치를 음수로 두고 들어 보며 맞춘다. 회원이 생성할 때 다시 조절할 수 있다.
+- 파일은 `apps/api/storage/voice-models/<id>/`(권한 700), 메타데이터는 SQLite `voice_models` 테이블.
+  모델 파일을 바꾸면 캐시 키가 바뀌어 예전 결과를 재사용하지 않는다.
+- Caddy는 `/api/admin/voice-models`만 본문 1100MB까지 허용한다(`deploy/Caddyfile.ai-tts`). 바꾼 뒤 `sudo systemctl reload caddy`.
+
 ## 회원·관리자 (다른 프로젝트와 동일한 승인제)
 
 - **회원가입**(이메일·이름·비밀번호·가입 메모, 약관 동의) → **승인 대기** 상태가 되고 로그인할 수 없다.

@@ -7,6 +7,7 @@ const TABS = [
   ['dashboard', '대시보드'],
   ['users', '회원 관리'],
   ['generations', '생성 내역'],
+  ['voices', '목소리 모델'],
   ['audit', '감사 로그'],
 ];
 
@@ -23,6 +24,7 @@ export default function AdminPage() {
       {tab === 'dashboard' && <Dashboard onGoUsers={() => setParams({ tab: 'users', status: 'pending' })} />}
       {tab === 'users' && <Users initialStatus={params.get('status') ?? ''} />}
       {tab === 'generations' && <Generations />}
+      {tab === 'voices' && <VoiceModels />}
       {tab === 'audit' && <Audit />}
     </div>
   );
@@ -382,5 +384,144 @@ function Audit() {
         </table>
       </div>
     </section>
+  );
+}
+
+const fmtMB = (b) => (b ? `${(b / 1024 / 1024).toFixed(1)}MB` : '-');
+
+/** RVC 목소리 모델: 관리자가 올리고, 회원은 음성 생성 화면에서 골라 쓴다 */
+function VoiceModels() {
+  const { data, error, reload } = useLoad(() => api.admin.voiceModels(), []);
+  const [form, setForm] = useState({ name: '', defaultPitch: 0, pth: null, index: null });
+  const [progress, setProgress] = useState(null); // { label, ratio }
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
+
+  async function act(fn, done) {
+    setErr('');
+    setMsg('');
+    try {
+      await fn();
+      if (done) setMsg(done);
+      reload();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setProgress(null);
+    }
+  }
+
+  function submit(e) {
+    e.preventDefault();
+    if (!form.pth) return setErr('.pth 파일을 고르세요.');
+    act(async () => {
+      setProgress({ label: '.pth 업로드 · 검사', ratio: 0 });
+      const model = await api.admin.uploadVoiceModel(form.pth, { name: form.name, defaultPitch: form.defaultPitch }, (r) =>
+        setProgress({ label: '.pth 업로드 · 검사', ratio: r }),
+      );
+      if (form.index) {
+        setProgress({ label: '.index 업로드', ratio: 0 });
+        await api.admin.uploadVoiceIndex(model.id, form.index, (r) => setProgress({ label: '.index 업로드', ratio: r }));
+      }
+      setForm({ name: '', defaultPitch: 0, pth: null, index: null });
+      e.target.reset();
+    }, '모델을 등록했습니다.');
+  }
+
+  if (error) return <div className="banner error">{error}</div>;
+  if (!data) return <p className="empty">불러오는 중…</p>;
+  return (
+    <>
+      {!data.rvcEnabled && (
+        <div className="banner warn">
+          목소리 변환(RVC)이 설정되지 않았습니다. <code>apps/api/.env</code>에 <code>RVC_ROOT</code>(RVC WebUI 폴더)를 지정하고 재시작하세요.
+        </div>
+      )}
+      <section className="card">
+        <h2>새 목소리 모델 올리기</h2>
+        <p className="muted small">
+          RVC로 학습한 <b>.pth</b>(필수)와 <b>.index</b>(선택, 있으면 음색이 더 비슷해짐)를 올리면, 회원이 음성 생성 화면에서 이 목소리로 바꿔 받을 수 있습니다.
+          기본 TTS가 여성 목소리라 남성 모델은 기본 피치를 음수(예: -5 ~ -12)로 두고 들어 보며 맞추세요.
+          .pth는 열 때 코드가 실행될 수 있는 형식이니 직접 학습했거나 믿을 수 있는 파일만 올리세요.
+        </p>
+        <form className="vm-form" onSubmit={submit}>
+          <label>
+            <span>이름</span>
+            <input value={form.name} maxLength={40} required onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="예) 루디 목소리" />
+          </label>
+          <label>
+            <span>기본 피치 {form.defaultPitch > 0 ? `+${form.defaultPitch}` : form.defaultPitch}</span>
+            <input type="range" min="-24" max="24" step="1" value={form.defaultPitch} onChange={(e) => setForm({ ...form, defaultPitch: Number(e.target.value) })} />
+          </label>
+          <label>
+            <span>.pth 파일</span>
+            <input type="file" accept=".pth" required onChange={(e) => setForm({ ...form, pth: e.target.files[0] ?? null })} />
+          </label>
+          <label>
+            <span>.index 파일 (선택)</span>
+            <input type="file" accept=".index" onChange={(e) => setForm({ ...form, index: e.target.files[0] ?? null })} />
+          </label>
+          <button className="primary" disabled={Boolean(progress) || !data.rvcEnabled}>
+            {progress ? `${progress.label} ${Math.round(progress.ratio * 100)}%` : '등록'}
+          </button>
+        </form>
+        {msg && <div className="banner ok">{msg}</div>}
+        {err && <div className="banner error">{err}</div>}
+      </section>
+
+      <section className="card">
+        <h2>등록된 모델</h2>
+        {data.items.length === 0 ? <p className="empty">아직 등록된 모델이 없습니다.</p> : (
+          <ul className="vm-list">
+            {data.items.map((m) => <VoiceModelRow key={m.id} m={m} act={act} busy={Boolean(progress)} setProgress={setProgress} />)}
+          </ul>
+        )}
+      </section>
+    </>
+  );
+}
+
+function VoiceModelRow({ m, act, busy, setProgress }) {
+  const [name, setName] = useState(m.name);
+  const [pitch, setPitch] = useState(m.defaultPitch);
+  const dirty = name !== m.name || pitch !== m.defaultPitch;
+
+  function uploadIndex(e) {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    act(() => api.admin.uploadVoiceIndex(m.id, file, (r) => setProgress({ label: '.index 업로드', ratio: r })), '.index를 올렸습니다.');
+  }
+
+  return (
+    <li className={m.enabled ? '' : 'off'}>
+      <div className="vm-main">
+        <input value={name} maxLength={40} onChange={(e) => setName(e.target.value)} aria-label="모델 이름" />
+        <label className="vm-pitch">
+          <span>기본 피치 {pitch > 0 ? `+${pitch}` : pitch}</span>
+          <input type="range" min="-24" max="24" step="1" value={pitch} onChange={(e) => setPitch(Number(e.target.value))} />
+        </label>
+        <div className="muted small">
+          .pth {fmtMB(m.modelBytes)} · .index {m.hasIndex ? fmtMB(m.indexBytes) : '없음'} · {fmtDate(m.createdAt)}
+          {!m.enabled && <span className="tag warn">사용 중지</span>}
+        </div>
+      </div>
+      <div className="inline vm-actions">
+        <button disabled={!dirty || busy} onClick={() => act(() => api.admin.updateVoiceModel(m.id, { name, defaultPitch: pitch }), '저장했습니다.')}>저장</button>
+        <label className={`file-btn ${busy ? 'disabled' : ''}`}>
+          {m.hasIndex ? '.index 교체' : '.index 추가'}
+          <input type="file" accept=".index" disabled={busy} onChange={uploadIndex} hidden />
+        </label>
+        {m.hasIndex && <button disabled={busy} onClick={() => act(() => api.admin.removeVoiceIndex(m.id), '.index를 지웠습니다.')}>.index 삭제</button>}
+        <button disabled={busy} onClick={() => act(() => api.admin.updateVoiceModel(m.id, { enabled: !m.enabled }))}>{m.enabled ? '사용 중지' : '다시 사용'}</button>
+        <button
+          className="danger"
+          disabled={busy}
+          onClick={() => confirm(`'${m.name}' 모델을 삭제할까요? 파일도 함께 지워집니다.`) && act(() => api.admin.deleteVoiceModel(m.id), '삭제했습니다.')}
+        >
+          삭제
+        </button>
+      </div>
+    </li>
   );
 }

@@ -30,6 +30,8 @@ export function securityHeaders(req, res, next) {
  */
 export function csrfGuard(req, res, next) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  // 서버 내부 서비스 요청(토큰 검증 완료): 브라우저가 보낼 수 없는 헤더라 CSRF 대상이 아니다
+  if (req.service) return next();
   const origin = req.headers.origin;
   if (origin) {
     let host;

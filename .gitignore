@@ -3,3 +3,4 @@ dist/
 .env
 apps/api/storage/
 *.log
+.env.bak-*

@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runFfmpeg } from '../lib/ffmpeg.js';
@@ -64,4 +64,78 @@ export async function encodeAudio(buffer, { format = 'mp3' } = {}) {
     ['-i', 'pipe:0', '-ac', '1', '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-ar', '48000', ...FORMATS[format].args, 'pipe:1'],
     buffer,
   );
+}
+
+/** ffmpeg 결과를 임시 파일로 받는다 — 파이프로 낸 WAV는 헤더의 길이 값이 비어 있어 일부 플레이어가 길이를 못 읽는다 */
+async function ffmpegToFile(args, input, ext) {
+  const dir = await mkdtemp(path.join(tmpdir(), 'tts-out-'));
+  try {
+    const out = path.join(dir, `out.${ext}`);
+    await runFfmpeg([...args, out], input);
+    return await readFile(out);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+/** 오디오 길이(ms) — 8kHz로 디코딩한 샘플 수로 계산 */
+export async function audioDurationMs(buffer) {
+  const pcm = await runFfmpeg(['-i', 'pipe:0', '-ac', '1', '-ar', '8000', '-f', 's16le', 'pipe:1'], buffer);
+  return Math.round(pcm.length / BYTES_PER_SAMPLE / 8);
+}
+
+/**
+ * 문장(세그먼트) 여러 개를 하나로 이어 붙이면서 문장별 시작·끝 시각을 기록한다 (내부 내레이션 API용).
+ * @param {Buffer[][]} segmentBuffers 문장마다 청크 오디오 목록
+ * @param {{gapMs?: number, chunkGapMs?: number, tempo?: number}} options gapMs: 문장 사이 무음, chunkGapMs: 한 문장 안 청크 사이 무음
+ * @returns {Promise<{wav: Buffer, durationMs: number, timings: {startMs: number, endMs: number}[]}>}
+ *   wav는 24kHz mono, 속도 조절(tempo)까지 반영. 음량 정규화는 하지 않는다(최종 인코딩에서 한 번만)
+ */
+export async function joinSegments(segmentBuffers, { gapMs = 250, chunkGapMs = 200, tempo = 1 } = {}) {
+  const dir = await mkdtemp(path.join(tmpdir(), 'tts-seg-'));
+  try {
+    const silence = (ms) => Buffer.alloc(Math.round((SAMPLE_RATE * ms) / 1000) * BYTES_PER_SAMPLE);
+    const parts = [];
+    const timings = [];
+    let samples = 0;
+    let n = 0;
+    for (const [si, buffers] of segmentBuffers.entries()) {
+      if (si > 0) {
+        const g = silence(gapMs);
+        parts.push(g);
+        samples += g.length / BYTES_PER_SAMPLE;
+      }
+      const start = samples;
+      for (const [ci, b] of buffers.entries()) {
+        if (ci > 0) {
+          const g = silence(chunkGapMs);
+          parts.push(g);
+          samples += g.length / BYTES_PER_SAMPLE;
+        }
+        const pcm = await decodeToPcm(b, dir, n++);
+        parts.push(pcm);
+        samples += pcm.length / BYTES_PER_SAMPLE;
+      }
+      timings.push({ start, end: samples });
+    }
+    const toMs = (s) => Math.round((s / SAMPLE_RATE) * 1000 / tempo);
+    const filters = Math.abs(tempo - 1) > 0.001 ? ['-af', atempoChain(tempo).join(',')] : [];
+    const wav = await ffmpegToFile(
+      ['-f', 's16le', '-ar', String(SAMPLE_RATE), '-ac', '1', '-i', 'pipe:0', ...filters, '-ar', String(SAMPLE_RATE), '-c:a', 'pcm_s16le'],
+      Buffer.concat(parts),
+      'wav',
+    );
+    return {
+      wav,
+      durationMs: toMs(samples),
+      timings: timings.map((t) => ({ startMs: toMs(t.start), endMs: toMs(t.end) })),
+    };
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+/** 최종 내레이션 WAV: 48kHz mono, −16 LUFS 정규화, 길이 값이 제대로 들어간 헤더 */
+export async function finalizeNarrationWav(buffer) {
+  return ffmpegToFile(['-i', 'pipe:0', '-ac', '1', '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-ar', '48000', '-c:a', 'pcm_s16le'], buffer, 'wav');
 }

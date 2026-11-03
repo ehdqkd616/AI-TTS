@@ -8,6 +8,12 @@ ai-tts.hotgarlic.dedyn.io {
 		Referrer-Policy "strict-origin-when-cross-origin"
 		-Server
 	}
+	# 서버 내부 API: 인터넷에서 온 요청의 내부 토큰 헤더는 지우고, 내부 전용 경로는 막는다 (서버 안에서는 127.0.0.1:3300으로 직접 호출)
+	request_header -X-Internal-Token
+	# respond는 handle보다 나중에 실행되므로 반드시 handle 블록으로 막는다
+	handle /api/internal/* {
+		respond 404
+	}
 	# 관리자 목소리 모델 업로드(.pth 최대 300MB, .index 최대 1GB)만 큰 본문 허용 — 앱이 관리자 여부·크기를 다시 검사
 	handle /api/admin/voice-models* {
 		request_body {

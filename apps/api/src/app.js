@@ -17,6 +17,8 @@ import { voiceModelsAdminRouter } from './routes/voiceModels.js';
 import { VoiceModels } from './services/voiceModels.js';
 import { RvcConverter } from './services/rvc.js';
 import { securityHeaders, csrfGuard } from './lib/securityHeaders.js';
+import { InternalAuth } from './services/internal.js';
+import { internalRouter } from './routes/internal.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -73,11 +75,15 @@ export async function createApp({ env = process.env, storageDir, logger = consol
   // Caddy(같은 호스트)만 신뢰 → req.ip가 실제 클라이언트 IP, req.secure는 HTTPS 여부
   app.set('trust proxy', 'loopback');
   app.use(securityHeaders);
+  // 서버 내부 서비스 토큰: CSRF 검사·세션보다 먼저 (틀린 토큰은 여기서 401로 끝)
+  const internalAuth = new InternalAuth(env, { dailyCharLimit: num(env.INTERNAL_DAILY_CHAR_LIMIT, 30_000) });
+  app.use('/api', internalAuth.load);
   app.use('/api', csrfGuard);
   app.use(express.json({ limit: '256kb' }));
   app.use('/api', sessions.load);
 
   app.get('/api/health', (req, res) => res.json({ ok: true }));
+  app.use('/api/internal/v1', internalRouter({ tts, voices, voiceModels, rvc, limits, paidGuard, store }));
   app.use('/api/auth', authRouter({ store, sessions, loginGuard, limits, mailer, logger, adminUsername: adminUsernameOf(env) }));
   app.use('/api/admin/voice-models', voiceModelsAdminRouter({ store, voiceModels, rvc }));
   app.use('/api/admin', adminRouter({ store, sessions, limits, paidGuard, adminUsername: adminUsernameOf(env) }));
@@ -105,5 +111,5 @@ export async function createApp({ env = process.env, storageDir, logger = consol
     });
   });
 
-  return { app, providers, voices, store, tts, limits, sessions, loginGuard, paidGuard, voiceModels, rvc };
+  return { app, providers, voices, store, tts, limits, sessions, loginGuard, paidGuard, voiceModels, rvc, internalAuth };
 }

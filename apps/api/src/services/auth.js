@@ -132,6 +132,7 @@ export class Sessions {
 
   /** 미들웨어: 유효한 세션이면 req.user 설정 (승인된 회원만) */
   load = (req, res, next) => {
+    if (req.service) return next(); // 서비스 토큰으로 이미 인증됨
     const token = readCookie(req, SESSION_COOKIE);
     if (token) {
       const user = this.store.get(

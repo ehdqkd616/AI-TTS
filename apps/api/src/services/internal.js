@@ -30,6 +30,11 @@ export class InternalAuth {
     return this.tokens.length > 0;
   }
 
+  /** 설정된 내부 서비스 이름들 (토큰은 내보내지 않는다) */
+  serviceNames() {
+    return this.tokens.map((t) => t.name);
+  }
+
   /** 토큰 → 서비스 이름 (없거나 틀리면 null). 모든 항목을 끝까지 비교한다 */
   match(token) {
     if (typeof token !== 'string' || !token) return null;

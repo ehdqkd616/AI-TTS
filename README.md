@@ -83,6 +83,19 @@ curl -s 127.0.0.1:8020/health                         # 로드된 모델 확인
   `pm2 restart ai-tts` 후 관리자 페이지 → **목소리 모델** 탭에서 경고가 사라지면 켜진 것이다.
 - **업로드는 관리자 전용.** `.pth`는 PyTorch pickle 파일이라 불러올 때 코드가 실행될 수 있어서, 회원에게는 업로드를 열지 않는다.
   업로드 직후 RVC로 실제로 열어 보는 검사(`--list-speakers`)를 하고, 실패하면 파일을 지운다.
+- **공개 범위(쓰는 곳).** 관리자 화면에서 모델마다 고른다.
+  - *회원 공용* — 음성 생성 화면의 목소리 변환 목록에 나온다.
+  - *`<서비스>` 전용* — `INTERNAL_API_TOKENS`에 등록된 그 내부 서비스(예: `shorts`)만 쓴다. 회원 목록에는 나오지 않고,
+    회원이나 다른 서비스가 id를 직접 넣어도 '사용 중지'가 아니라 **404**로 답한다(존재 자체를 알리지 않는다).
+    본인 목소리처럼 남이 쓰면 안 되는 모델은 반드시 전용으로 둘 것. DB 컬럼은 `voice_models.owner_service`(NULL = 공용).
+- **서버에 이미 있는 파일을 등록할 때**는 브라우저 업로드 대신 `tools/register-voice-model.mjs`를 쓴다
+  (관리자 화면과 같은 검사·감사 기록을 거친다. 수백 MB를 브라우저로 올리지 않아도 된다).
+  ```bash
+  node --env-file=apps/api/.env tools/register-voice-model.mjs \
+    --name '루디 목소리' --owner shorts --pitch -8 \
+    --pth   ../RVC-Learning/.../assets/weights/<모델>.pth \
+    --index ../RVC-Learning/.../logs/<모델>.index
+  ```
 - **GPU는 하나.** 이 서버 안에서는 변환을 한 번에 하나씩 처리하고 대기열(`RVC_MAX_QUEUE`)이 차면 503을 돌려준다.
   RVC WebUI·AI-Voice-Cover와 같은 GPU를 쓰므로, 그쪽 작업과 동시에 돌면 VRAM 부족으로 실패할 수 있다(실패는 생성 내역에 `rvc:` 사유로 남는다).
 - **피치**: 기본 한국어 보이스(MeloTTS)가 여성 목소리라, 남성 모델은 기본 피치를 음수로 두고 들어 보며 맞춘다. 회원이 생성할 때 다시 조절할 수 있다.

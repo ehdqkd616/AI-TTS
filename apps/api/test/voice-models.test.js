@@ -183,3 +183,57 @@ test('RVC가 설정되지 않으면 업로드·변환 모두 503', async () => {
     await off.close();
   }
 });
+
+test('서비스 전용 모델: 회원에게는 없는 것처럼, 그 서비스만 쓸 수 있다', async () => {
+  const SHORTS = 'a'.repeat(64);
+  const OTHER = 'b'.repeat(64);
+  const scoped = await startApp({ RVC_ROOT: rvcRoot, INTERNAL_API_TOKENS: `shorts:${SHORTS}, other:${OTHER}` });
+  const svc = (method, p, body, token = SHORTS) =>
+    fetch(scoped.origin + p, {
+      method,
+      headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), 'X-Internal-Token': token },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  const ids = (list) => list.map((v) => v.id).sort();
+  try {
+    const a = scoped.client();
+    await a.login(ADMIN.username, ADMIN.password);
+    const member = await approvedUser(scoped, a);
+
+    // 관리자 화면은 전용으로 둘 수 있는 서비스 목록을 받는다 (토큰은 내보내지 않는다)
+    assert.deepEqual((await a.json('GET', '/api/admin/voice-models')).body.services, ['shorts', 'other']);
+
+    const mine = (await upload(a, 'POST', '/api/admin/voice-models?name=내목소리&ownerService=shorts', pth())).body;
+    assert.equal(mine.ownerService, 'shorts');
+    const shared = (await upload(a, 'POST', '/api/admin/voice-models?name=공용', pth())).body;
+    assert.equal(shared.ownerService, null);
+    assert.equal((await upload(a, 'POST', '/api/admin/voice-models?name=x&ownerService=BAD%20NAME', pth())).body.error.code, 'BAD_OWNER_SERVICE');
+
+    // 관리자 목록에는 둘 다, 회원 목록에는 공용만
+    assert.deepEqual(ids((await a.json('GET', '/api/admin/voice-models')).body.items), ids([mine, shared]));
+    assert.deepEqual(ids((await member.json('GET', '/api/voice-models')).body.items), [shared.id]);
+
+    // 회원이 id를 직접 넣어도 '사용 중지'가 아니라 404 — 존재 자체를 알리지 않는다
+    const blocked = await member.json('POST', '/api/tts', { text: '하나', locale: 'ko-KR', voiceModelId: mine.id });
+    assert.equal(blocked.status, 404);
+    assert.equal(blocked.body.error.code, 'NOT_FOUND');
+
+    // shorts: 전용 + 공용 둘 다 보이고 쓸 수 있다
+    assert.deepEqual(ids((await (await svc('GET', '/api/internal/v1/catalog')).json()).voiceModels), ids([mine, shared]));
+    const nar = await svc('POST', '/api/internal/v1/narrations', { segments: [{ id: 's1', text: '안녕하세요' }], locale: 'ko-KR', voiceModelId: mine.id });
+    assert.equal(nar.status, 200, await nar.clone().text());
+    assert.equal((await nar.json()).voiceModel.id, mine.id);
+
+    // 다른 서비스: 공용만 — 전용 모델은 404
+    assert.deepEqual(ids((await (await svc('GET', '/api/internal/v1/catalog', null, OTHER)).json()).voiceModels), [shared.id]);
+    assert.equal((await svc('POST', '/api/internal/v1/narrations', { segments: [{ id: 's1', text: '둘' }], locale: 'ko-KR', voiceModelId: mine.id }, OTHER)).status, 404);
+
+    // 공개 범위를 바꾸면 회원 목록에서 사라진다
+    assert.equal((await a.json('PATCH', `/api/admin/voice-models/${shared.id}`, { ownerService: 'shorts' })).body.ownerService, 'shorts');
+    assert.deepEqual((await member.json('GET', '/api/voice-models')).body.items, []);
+    assert.equal((await a.json('PATCH', `/api/admin/voice-models/${mine.id}`, { ownerService: '' })).body.ownerService, null);
+    assert.deepEqual(ids((await member.json('GET', '/api/voice-models')).body.items), [mine.id]);
+  } finally {
+    await scoped.close();
+  }
+});

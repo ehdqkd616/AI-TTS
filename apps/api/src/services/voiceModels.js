@@ -18,6 +18,10 @@ const ID_RE = /^[0-9a-f]{16}$/;
  *
  * 보안: .pth는 PyTorch pickle 파일이라 불러올 때 코드가 실행될 수 있다.
  * 그래서 업로드는 관리자 전용이고(라우트에서 requireAdmin), 회원은 목록에서 고르기만 한다.
+ *
+ * 공개 범위(owner_service): NULL이면 이 서비스 회원 모두가 고를 수 있는 공용 모델.
+ * 값이 있으면 그 이름의 내부 서비스(INTERNAL_API_TOKENS)만 쓰는 전용 모델이라 회원 목록에는 나오지 않는다.
+ * 관리자 개인 목소리처럼 다른 회원이 쓰면 안 되는 모델을 특정 프로젝트 전용으로 두기 위한 것.
  */
 export class VoiceModels {
   constructor(store, dir, { maxModelBytes = 300 * MB, maxIndexBytes = 1024 * MB } = {}) {
@@ -34,9 +38,12 @@ export class VoiceModels {
         index_bytes   INTEGER NOT NULL DEFAULT 0,
         created_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
         created_at    INTEGER NOT NULL,
-        updated_at    INTEGER NOT NULL           -- 파일이 바뀌면 갱신 → 캐시 키에 포함
+        updated_at    INTEGER NOT NULL,          -- 파일이 바뀌면 갱신 → 캐시 키에 포함
+        owner_service TEXT                        -- NULL이면 회원 공용, 값이 있으면 그 내부 서비스 전용
       );
     `);
+    const cols = store.db.prepare('PRAGMA table_info(voice_models)').all().map((c) => c.name);
+    if (!cols.includes('owner_service')) store.db.exec('ALTER TABLE voice_models ADD COLUMN owner_service TEXT');
   }
 
   static validateName(name) {
@@ -53,6 +60,17 @@ export class VoiceModels {
     return p;
   }
 
+  /** 내부 서비스 이름 (INTERNAL_API_TOKENS의 이름과 같은 규칙). 비우면 회원 공용(NULL) */
+  static validateOwnerService(service) {
+    if (service === undefined || service === null) return null;
+    const s = String(service).trim();
+    if (!s) return null;
+    if (!/^[a-z0-9_-]{1,32}$/.test(s)) {
+      throw new HttpError(400, '전용 서비스 이름은 영소문자·숫자·_·- 1~32자입니다.', 'BAD_OWNER_SERVICE');
+    }
+    return s;
+  }
+
   modelDir(id) {
     if (!ID_RE.test(id)) return null;
     return path.join(this.dir, id);
@@ -67,6 +85,7 @@ export class VoiceModels {
     return {
       id: row.id,
       name: row.name,
+      ownerService: row.owner_service ?? null,
       defaultPitch: row.default_pitch,
       hasIndex: Boolean(row.has_index),
       enabled: Boolean(row.enabled),
@@ -77,9 +96,26 @@ export class VoiceModels {
     };
   }
 
-  list({ includeDisabled = false } = {}) {
+  /**
+   * 기본값은 "켜져 있는 회원 공용 모델"이다 — 범위를 넓히려면 부르는 쪽이 명시해야 한다(실수로 새어 나가지 않게).
+   * @param {{includeDisabled?: boolean, ownerService?: string|null, includeAllServices?: boolean}} opts
+   *   ownerService: 그 서비스 전용 모델 + 공용 모델. includeAllServices: 소유와 무관하게 전부(관리자 화면).
+   */
+  list({ includeDisabled = false, ownerService = null, includeAllServices = false } = {}) {
+    const where = [];
+    const params = [];
+    if (!includeDisabled) where.push('enabled = 1');
+    if (!includeAllServices) {
+      const owner = VoiceModels.validateOwnerService(ownerService);
+      if (owner === null) where.push('owner_service IS NULL');
+      else {
+        where.push('(owner_service IS NULL OR owner_service = ?)');
+        params.push(owner);
+      }
+    }
     const rows = this.store.all(
-      `SELECT * FROM voice_models ${includeDisabled ? '' : 'WHERE enabled = 1'} ORDER BY name COLLATE NOCASE, created_at`,
+      `SELECT * FROM voice_models ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY name COLLATE NOCASE, created_at`,
+      ...params,
     );
     return rows.map((r) => this.out(r));
   }
@@ -90,9 +126,16 @@ export class VoiceModels {
     return row;
   }
 
-  /** 회원이 TTS에서 쓸 때: 켜져 있는 모델만 */
-  getUsable(id) {
+  /**
+   * TTS에서 쓸 때: 켜져 있고, 부르는 쪽에 보이는 모델만. ownerService를 안 주면 회원(공용 모델)으로 본다.
+   * 다른 서비스 전용 모델은 '사용 중지'가 아니라 아예 없는 것처럼 404 — 존재 자체를 알리지 않는다.
+   */
+  getUsable(id, { ownerService = null } = {}) {
     const row = this.get(id);
+    const owner = row.owner_service ?? null;
+    if (owner !== null && owner !== VoiceModels.validateOwnerService(ownerService)) {
+      throw new HttpError(404, '목소리 모델을 찾을 수 없습니다.', 'NOT_FOUND');
+    }
     if (!row.enabled) throw new HttpError(400, '사용 중지된 목소리 모델입니다.', 'MODEL_DISABLED');
     return { ...this.out(row), ...this.paths(row.id) };
   }
@@ -127,9 +170,10 @@ export class VoiceModels {
   }
 
   /** 새 모델 등록 — 본문은 .pth 파일 그대로(application/octet-stream) */
-  async create(req, { name, defaultPitch = 0, actorId, verify }) {
+  async create(req, { name, defaultPitch = 0, ownerService = null, actorId, verify }) {
     name = VoiceModels.validateName(name);
     defaultPitch = VoiceModels.validatePitch(defaultPitch);
+    const owner = VoiceModels.validateOwnerService(ownerService);
     const id = randomBytes(8).toString('hex');
     const p = this.paths(id);
     mkdirSync(path.dirname(p.pth), { recursive: true, mode: 0o700 });
@@ -140,9 +184,9 @@ export class VoiceModels {
       });
       const now = Date.now();
       this.store.run(
-        `INSERT INTO voice_models (id, name, default_pitch, model_bytes, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        id, name, defaultPitch, bytes, actorId ?? null, now, now,
+        `INSERT INTO voice_models (id, name, default_pitch, model_bytes, owner_service, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        id, name, defaultPitch, bytes, owner, actorId ?? null, now, now,
       );
       return this.out(this.get(id));
     } catch (err) {
@@ -167,15 +211,19 @@ export class VoiceModels {
     return this.out(this.get(row.id));
   }
 
-  update(id, { name, defaultPitch, enabled }) {
+  update(id, { name, defaultPitch, enabled, ownerService }) {
     const row = this.get(id);
     const next = {
       name: name === undefined ? row.name : VoiceModels.validateName(name),
       pitch: defaultPitch === undefined ? row.default_pitch : VoiceModels.validatePitch(defaultPitch),
       enabled: enabled === undefined ? row.enabled : enabled ? 1 : 0,
+      owner: ownerService === undefined ? row.owner_service ?? null : VoiceModels.validateOwnerService(ownerService),
     };
-    // 이름·사용 여부는 결과 음성에 영향이 없어 updated_at(캐시 키)을 건드리지 않는다
-    this.store.run('UPDATE voice_models SET name = ?, default_pitch = ?, enabled = ? WHERE id = ?', next.name, next.pitch, next.enabled, row.id);
+    // 이름·사용 여부·공개 범위는 결과 음성에 영향이 없어 updated_at(캐시 키)을 건드리지 않는다
+    this.store.run(
+      'UPDATE voice_models SET name = ?, default_pitch = ?, enabled = ?, owner_service = ? WHERE id = ?',
+      next.name, next.pitch, next.enabled, next.owner, row.id,
+    );
     return this.out(this.get(row.id));
   }
 

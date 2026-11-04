@@ -29,8 +29,11 @@ export function internalRouter({ tts, voices, voiceModels, rvc, limits, paidGuar
     res.json({
       locales: voices.list(),
       rvcEnabled: rvc.isEnabled(),
+      // 이 서비스 전용 모델 + 회원 공용 모델만 (다른 서비스 전용 모델은 보이지 않는다)
       voiceModels: rvc.isEnabled()
-        ? voiceModels.list().map(({ id, name, defaultPitch, hasIndex, updatedAt }) => ({ id, name, defaultPitch, hasIndex, updatedAt }))
+        ? voiceModels
+            .list({ ownerService: req.service })
+            .map(({ id, name, defaultPitch, hasIndex, updatedAt }) => ({ id, name, defaultPitch, hasIndex, updatedAt }))
         : [],
       maxTextLength: tts.maxTextLength,
     });
@@ -48,6 +51,7 @@ export function internalRouter({ tts, voices, voiceModels, rvc, limits, paidGuar
           gapMs: gapMs == null ? 250 : Number(gapMs),
           voiceModelId: voiceModelId || undefined,
           pitch: pitch ?? undefined,
+          ownerService: req.service,
           userId: null,
         },
         {

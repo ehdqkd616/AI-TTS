@@ -86,8 +86,8 @@ export const api = {
     generations: (filter) => get(`/admin/generations${qs(filter)}`),
     audit: (filter) => get(`/admin/audit${qs(filter)}`),
     voiceModels: () => get('/admin/voice-models'),
-    uploadVoiceModel: (file, { name, defaultPitch }, onProgress) =>
-      uploadFile('POST', `/admin/voice-models${qs({ name, defaultPitch })}`, file, onProgress),
+    uploadVoiceModel: (file, { name, defaultPitch, ownerService }, onProgress) =>
+      uploadFile('POST', `/admin/voice-models${qs({ name, defaultPitch, ownerService })}`, file, onProgress),
     uploadVoiceIndex: (id, file, onProgress) => uploadFile('PUT', `/admin/voice-models/${id}/index`, file, onProgress),
     removeVoiceIndex: (id) => del(`/admin/voice-models/${id}/index`),
     updateVoiceModel: (id, body) => patch(`/admin/voice-models/${id}`, body),

@@ -18,12 +18,15 @@ export class TtsService {
     Object.assign(this, { providers, voices, store, voiceModels, rvc, maxTextLength, gapMs, logger });
   }
 
-  /** 목소리 변환 모델 선택 해석. 피치를 안 주면 모델 기본 피치 */
-  resolveVoiceModel(voiceModelId, pitch) {
+  /**
+   * 목소리 변환 모델 선택 해석. 피치를 안 주면 모델 기본 피치.
+   * ownerService는 부르는 쪽(내부 서비스 이름, 회원이면 null) — 전용 모델을 가려내는 데 쓴다.
+   */
+  resolveVoiceModel(voiceModelId, pitch, ownerService = null) {
     if (!voiceModelId) return { model: null, pitch: 0 };
     if (!this.voiceModels || !this.rvc) throw new HttpError(503, '목소리 변환 기능이 꺼져 있습니다.', 'RVC_DISABLED');
     this.rvc.assertEnabled();
-    const model = this.voiceModels.getUsable(voiceModelId);
+    const model = this.voiceModels.getUsable(voiceModelId, { ownerService });
     return { model, pitch: pitch == null || pitch === '' ? model.defaultPitch : VoiceModels.validatePitch(pitch) };
   }
 
@@ -69,12 +72,12 @@ export class TtsService {
    *   meterCall: 엔진에 요청을 보내기 직전(재시도마다) 호출 — 과금 계측. engineLimit 에러를 던지면 다음 후보로
    */
   async synthesize(
-    { text, locale, voiceId, speed = 1, format = 'mp3', normalizedText, userId, voiceModelId, pitch },
+    { text, locale, voiceId, speed = 1, format = 'mp3', normalizedText, userId, voiceModelId, pitch, ownerService = null },
     { beforeEngine, allowsVoice, meterCall } = {},
   ) {
     this.validate({ text, speed, format });
     if (normalizedText != null) this.validate({ text: normalizedText, speed, format });
-    const conv = this.resolveVoiceModel(voiceModelId, pitch);
+    const conv = this.resolveVoiceModel(voiceModelId, pitch, ownerService);
 
     const resolvedLocale = this.resolveLocale(text, locale);
     const candidates = this.voices.resolve(resolvedLocale, voiceId); // ④ 보이스 매핑 (+ fallback 순서)
@@ -172,7 +175,7 @@ export class TtsService {
    *          voiceModelId?: string, pitch?: number, userId?: any}} req
    * @param {{beforeEngine?: Function, allowsVoice?: Function, meterCall?: Function}} hooks synthesize()와 같음
    */
-  async synthesizeNarration({ segments, locale, voiceId, speed = 1, gapMs = 250, voiceModelId, pitch, userId }, { beforeEngine, allowsVoice, meterCall } = {}) {
+  async synthesizeNarration({ segments, locale, voiceId, speed = 1, gapMs = 250, voiceModelId, pitch, userId, ownerService = null }, { beforeEngine, allowsVoice, meterCall } = {}) {
     if (!Array.isArray(segments) || !segments.length) throw new HttpError(400, 'segments가 필요합니다.', 'EMPTY_TEXT');
     if (segments.length > NARRATION_MAX_SEGMENTS) {
       throw new HttpError(400, `문장은 ${NARRATION_MAX_SEGMENTS}개 이하로 보내세요.`, 'TOO_MANY_SEGMENTS');
@@ -188,7 +191,7 @@ export class TtsService {
     const allText = segments.map((s) => s.text).join('\n');
     this.validate({ text: allText, speed, format: 'wav' });
     if (typeof gapMs !== 'number' || !(gapMs >= 0 && gapMs <= 2000)) throw new HttpError(400, 'gapMs는 0~2000 사이여야 합니다.', 'BAD_GAP');
-    const conv = this.resolveVoiceModel(voiceModelId, pitch);
+    const conv = this.resolveVoiceModel(voiceModelId, pitch, ownerService);
 
     const resolvedLocale = this.resolveLocale(allText, locale);
     const candidates = this.voices.resolve(resolvedLocale, voiceId);

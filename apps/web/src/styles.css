@@ -199,7 +199,7 @@ table.grid .num { text-align: right; }
 .vm-list li { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
 .vm-list li.off .vm-main input:not([type]) { color: var(--muted); }
 .vm-main { display: flex; flex-direction: column; gap: 6px; flex: 1 1 260px; min-width: 0; }
-.vm-pitch { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); max-width: 320px; }
+.vm-pitch, .vm-scope { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); max-width: 320px; }
 .vm-actions { flex-wrap: wrap; align-items: flex-start; }
 .inline .file-btn {
   background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 12px; font-size: 13px; color: var(--text); cursor: pointer;

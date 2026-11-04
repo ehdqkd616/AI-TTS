@@ -392,7 +392,7 @@ const fmtMB = (b) => (b ? `${(b / 1024 / 1024).toFixed(1)}MB` : '-');
 /** RVC 목소리 모델: 관리자가 올리고, 회원은 음성 생성 화면에서 골라 쓴다 */
 function VoiceModels() {
   const { data, error, reload } = useLoad(() => api.admin.voiceModels(), []);
-  const [form, setForm] = useState({ name: '', defaultPitch: 0, pth: null, index: null });
+  const [form, setForm] = useState({ name: '', defaultPitch: 0, ownerService: '', pth: null, index: null });
   const [progress, setProgress] = useState(null); // { label, ratio }
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
@@ -416,14 +416,14 @@ function VoiceModels() {
     if (!form.pth) return setErr('.pth 파일을 고르세요.');
     act(async () => {
       setProgress({ label: '.pth 업로드 · 검사', ratio: 0 });
-      const model = await api.admin.uploadVoiceModel(form.pth, { name: form.name, defaultPitch: form.defaultPitch }, (r) =>
+      const model = await api.admin.uploadVoiceModel(form.pth, { name: form.name, defaultPitch: form.defaultPitch, ownerService: form.ownerService }, (r) =>
         setProgress({ label: '.pth 업로드 · 검사', ratio: r }),
       );
       if (form.index) {
         setProgress({ label: '.index 업로드', ratio: 0 });
         await api.admin.uploadVoiceIndex(model.id, form.index, (r) => setProgress({ label: '.index 업로드', ratio: r }));
       }
-      setForm({ name: '', defaultPitch: 0, pth: null, index: null });
+      setForm({ name: '', defaultPitch: 0, ownerService: '', pth: null, index: null });
       e.target.reset();
     }, '모델을 등록했습니다.');
   }
@@ -443,6 +443,8 @@ function VoiceModels() {
           RVC로 학습한 <b>.pth</b>(필수)와 <b>.index</b>(선택, 있으면 음색이 더 비슷해짐)를 올리면, 회원이 음성 생성 화면에서 이 목소리로 바꿔 받을 수 있습니다.
           기본 TTS가 여성 목소리라 남성 모델은 기본 피치를 음수(예: -5 ~ -12)로 두고 들어 보며 맞추세요.
           .pth는 열 때 코드가 실행될 수 있는 형식이니 직접 학습했거나 믿을 수 있는 파일만 올리세요.
+          <br />
+          <b>쓰는 곳</b>을 특정 서비스 전용으로 두면 그 서비스(내부 API)만 쓰고 회원 화면에는 나오지 않습니다 — 본인 목소리처럼 남이 쓰면 안 되는 모델에 쓰세요.
         </p>
         <form className="vm-form" onSubmit={submit}>
           <label>
@@ -452,6 +454,15 @@ function VoiceModels() {
           <label>
             <span>기본 피치 {form.defaultPitch > 0 ? `+${form.defaultPitch}` : form.defaultPitch}</span>
             <input type="range" min="-24" max="24" step="1" value={form.defaultPitch} onChange={(e) => setForm({ ...form, defaultPitch: Number(e.target.value) })} />
+          </label>
+          <label>
+            <span>쓰는 곳</span>
+            <select value={form.ownerService} onChange={(e) => setForm({ ...form, ownerService: e.target.value })}>
+              <option value="">회원 공용 (음성 생성 화면에 노출)</option>
+              {(data.services ?? []).map((s) => (
+                <option key={s} value={s}>{s} 전용 (회원에게 숨김)</option>
+              ))}
+            </select>
           </label>
           <label>
             <span>.pth 파일</span>
@@ -473,7 +484,9 @@ function VoiceModels() {
         <h2>등록된 모델</h2>
         {data.items.length === 0 ? <p className="empty">아직 등록된 모델이 없습니다.</p> : (
           <ul className="vm-list">
-            {data.items.map((m) => <VoiceModelRow key={m.id} m={m} act={act} busy={Boolean(progress)} setProgress={setProgress} />)}
+            {data.items.map((m) => (
+              <VoiceModelRow key={m.id} m={m} services={data.services ?? []} act={act} busy={Boolean(progress)} setProgress={setProgress} />
+            ))}
           </ul>
         )}
       </section>
@@ -481,10 +494,13 @@ function VoiceModels() {
   );
 }
 
-function VoiceModelRow({ m, act, busy, setProgress }) {
+function VoiceModelRow({ m, services, act, busy, setProgress }) {
   const [name, setName] = useState(m.name);
   const [pitch, setPitch] = useState(m.defaultPitch);
-  const dirty = name !== m.name || pitch !== m.defaultPitch;
+  const [owner, setOwner] = useState(m.ownerService ?? '');
+  // 설정에서 토큰이 사라진 뒤에도 지금 값은 고를 수 있게 남겨 둔다
+  const ownerOptions = [...new Set([...services, ...(m.ownerService ? [m.ownerService] : [])])];
+  const dirty = name !== m.name || pitch !== m.defaultPitch || owner !== (m.ownerService ?? '');
 
   function uploadIndex(e) {
     const file = e.target.files[0];
@@ -501,13 +517,28 @@ function VoiceModelRow({ m, act, busy, setProgress }) {
           <span>기본 피치 {pitch > 0 ? `+${pitch}` : pitch}</span>
           <input type="range" min="-24" max="24" step="1" value={pitch} onChange={(e) => setPitch(Number(e.target.value))} />
         </label>
+        <label className="vm-scope">
+          <span>쓰는 곳</span>
+          <select value={owner} onChange={(e) => setOwner(e.target.value)}>
+            <option value="">회원 공용</option>
+            {ownerOptions.map((s) => (
+              <option key={s} value={s}>{s} 전용</option>
+            ))}
+          </select>
+        </label>
         <div className="muted small">
           .pth {fmtMB(m.modelBytes)} · .index {m.hasIndex ? fmtMB(m.indexBytes) : '없음'} · {fmtDate(m.createdAt)}
+          {m.ownerService && <span className="tag">{m.ownerService} 전용</span>}
           {!m.enabled && <span className="tag warn">사용 중지</span>}
         </div>
       </div>
       <div className="inline vm-actions">
-        <button disabled={!dirty || busy} onClick={() => act(() => api.admin.updateVoiceModel(m.id, { name, defaultPitch: pitch }), '저장했습니다.')}>저장</button>
+        <button
+          disabled={!dirty || busy}
+          onClick={() => act(() => api.admin.updateVoiceModel(m.id, { name, defaultPitch: pitch, ownerService: owner }), '저장했습니다.')}
+        >
+          저장
+        </button>
         <label className={`file-btn ${busy ? 'disabled' : ''}`}>
           {m.hasIndex ? '.index 교체' : '.index 추가'}
           <input type="file" accept=".index" disabled={busy} onChange={uploadIndex} hidden />

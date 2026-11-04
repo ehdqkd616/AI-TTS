@@ -85,7 +85,7 @@ export async function createApp({ env = process.env, storageDir, logger = consol
   app.get('/api/health', (req, res) => res.json({ ok: true }));
   app.use('/api/internal/v1', internalRouter({ tts, voices, voiceModels, rvc, limits, paidGuard, store }));
   app.use('/api/auth', authRouter({ store, sessions, loginGuard, limits, mailer, logger, adminUsername: adminUsernameOf(env) }));
-  app.use('/api/admin/voice-models', voiceModelsAdminRouter({ store, voiceModels, rvc }));
+  app.use('/api/admin/voice-models', voiceModelsAdminRouter({ store, voiceModels, rvc, internalAuth }));
   app.use('/api/admin', adminRouter({ store, sessions, limits, paidGuard, adminUsername: adminUsernameOf(env) }));
   app.use('/api', ttsRouter({ tts, voices, store, limits, paidGuard, voiceModels, rvc }));
 

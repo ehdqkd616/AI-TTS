@@ -1,5 +1,5 @@
-import { createWriteStream, mkdirSync } from 'node:fs';
-import { open, rename, rm } from 'node:fs/promises';
+import { createReadStream, createWriteStream, mkdirSync } from 'node:fs';
+import { open, rename, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
@@ -44,6 +44,11 @@ export class VoiceModels {
     `);
     const cols = store.db.prepare('PRAGMA table_info(voice_models)').all().map((c) => c.name);
     if (!cols.includes('owner_service')) store.db.exec('ALTER TABLE voice_models ADD COLUMN owner_service TEXT');
+    // 모델별 변환 설정 (NULL이면 서버 기본값 RVC_INDEX_RATE / RVC_PROTECT)
+    //   index_rate가 높으면 학습 녹음의 특징을 많이 섞어 음색은 닮지만 발음이 뭉개진다.
+    //   2026-11-04 측정(노래 모델, MeloTTS 5문장, Whisper 받아쓰기 글자 오류율): 원본 4.3%, index 0 → 5.0%, 0.25 → 5.6%, 0.5 → 8~11%, 0.75 → 9.3%
+    if (!cols.includes('index_rate')) store.db.exec('ALTER TABLE voice_models ADD COLUMN index_rate REAL');
+    if (!cols.includes('protect')) store.db.exec('ALTER TABLE voice_models ADD COLUMN protect REAL');
   }
 
   static validateName(name) {
@@ -58,6 +63,22 @@ export class VoiceModels {
       throw new HttpError(400, `피치는 ${PITCH_RANGE[0]}~${PITCH_RANGE[1]} 사이 정수여야 합니다.`, 'BAD_PITCH');
     }
     return p;
+  }
+
+  /** index 반영 비율 0~1. 비우면 서버 기본값(null) */
+  static validateIndexRate(v) {
+    if (v === undefined || v === null || v === '') return null;
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0 || n > 1) throw new HttpError(400, 'index 비율은 0~1 사이여야 합니다.', 'BAD_INDEX_RATE');
+    return Math.round(n * 100) / 100;
+  }
+
+  /** 자음 보호 0~0.5 (낮을수록 무성 자음·숨소리를 원본 그대로 지킨다, 0.5는 끔). 비우면 서버 기본값(null) */
+  static validateProtect(v) {
+    if (v === undefined || v === null || v === '') return null;
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0 || n > 0.5) throw new HttpError(400, '자음 보호는 0~0.5 사이여야 합니다.', 'BAD_PROTECT');
+    return Math.round(n * 100) / 100;
   }
 
   /** 내부 서비스 이름 (INTERNAL_API_TOKENS의 이름과 같은 규칙). 비우면 회원 공용(NULL) */
@@ -87,6 +108,8 @@ export class VoiceModels {
       name: row.name,
       ownerService: row.owner_service ?? null,
       defaultPitch: row.default_pitch,
+      indexRate: row.index_rate ?? null,
+      protect: row.protect ?? null,
       hasIndex: Boolean(row.has_index),
       enabled: Boolean(row.enabled),
       modelBytes: row.model_bytes,
@@ -140,26 +163,25 @@ export class VoiceModels {
     return { ...this.out(row), ...this.paths(row.id) };
   }
 
+  /** 관리자 미리 듣기: 공개 범위·사용 여부와 무관하게, 설정 일부를 저장하지 않고 바꿔 본다 */
+  getForPreview(id, { indexRate, protect } = {}) {
+    const row = this.get(id);
+    const m = { ...this.out(row), ...this.paths(row.id) };
+    if (indexRate !== undefined) m.indexRate = VoiceModels.validateIndexRate(indexRate);
+    if (protect !== undefined) m.protect = VoiceModels.validateProtect(protect);
+    return m;
+  }
+
   /**
    * 요청 본문을 메모리에 올리지 않고 바로 파일로 흘려 쓴다(pm2 메모리 한도 512MB 보호).
    * 한도를 넘으면 중단하고 413. 완료되면 임시 파일을 원자적으로 교체.
    */
   async #receive(req, dest, maxBytes, check) {
-    const declared = Number(req.headers['content-length']);
-    if (declared > maxBytes) throw tooLarge(maxBytes);
     // 검사(RVC infer/cli.py)가 확장자를 보므로 임시 파일도 원래 확장자로 끝나게 둔다 → model.<난수>.part.pth
     const ext = path.extname(dest);
     const tmp = `${dest.slice(0, dest.length - ext.length)}.${randomBytes(4).toString('hex')}.part${ext}`;
-    let size = 0;
-    const limiter = new Transform({
-      transform(chunk, enc, cb) {
-        size += chunk.length;
-        cb(size > maxBytes ? tooLarge(maxBytes) : null, chunk);
-      },
-    });
     try {
-      await pipeline(req, limiter, createWriteStream(tmp, { mode: 0o600 }));
-      if (size === 0) throw new HttpError(400, '파일이 비어 있습니다.', 'EMPTY_FILE');
+      const size = await receiveToFile(req, tmp, maxBytes);
       await check?.(tmp);
       await rename(tmp, dest);
       return size;
@@ -170,9 +192,11 @@ export class VoiceModels {
   }
 
   /** 새 모델 등록 — 본문은 .pth 파일 그대로(application/octet-stream) */
-  async create(req, { name, defaultPitch = 0, ownerService = null, actorId, verify }) {
+  async create(req, { name, defaultPitch = 0, ownerService = null, indexRate = null, protect = null, actorId, verify }) {
     name = VoiceModels.validateName(name);
     defaultPitch = VoiceModels.validatePitch(defaultPitch);
+    indexRate = VoiceModels.validateIndexRate(indexRate);
+    protect = VoiceModels.validateProtect(protect);
     const owner = VoiceModels.validateOwnerService(ownerService);
     const id = randomBytes(8).toString('hex');
     const p = this.paths(id);
@@ -184,9 +208,9 @@ export class VoiceModels {
       });
       const now = Date.now();
       this.store.run(
-        `INSERT INTO voice_models (id, name, default_pitch, model_bytes, owner_service, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        id, name, defaultPitch, bytes, owner, actorId ?? null, now, now,
+        `INSERT INTO voice_models (id, name, default_pitch, index_rate, protect, model_bytes, owner_service, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        id, name, defaultPitch, indexRate, protect, bytes, owner, actorId ?? null, now, now,
       );
       return this.out(this.get(id));
     } catch (err) {
@@ -211,18 +235,21 @@ export class VoiceModels {
     return this.out(this.get(row.id));
   }
 
-  update(id, { name, defaultPitch, enabled, ownerService }) {
+  update(id, { name, defaultPitch, enabled, ownerService, indexRate, protect }) {
     const row = this.get(id);
     const next = {
       name: name === undefined ? row.name : VoiceModels.validateName(name),
       pitch: defaultPitch === undefined ? row.default_pitch : VoiceModels.validatePitch(defaultPitch),
       enabled: enabled === undefined ? row.enabled : enabled ? 1 : 0,
       owner: ownerService === undefined ? row.owner_service ?? null : VoiceModels.validateOwnerService(ownerService),
+      indexRate: indexRate === undefined ? row.index_rate ?? null : VoiceModels.validateIndexRate(indexRate),
+      protect: protect === undefined ? row.protect ?? null : VoiceModels.validateProtect(protect),
     };
-    // 이름·사용 여부·공개 범위는 결과 음성에 영향이 없어 updated_at(캐시 키)을 건드리지 않는다
+    // 이름·사용 여부·공개 범위는 결과 음성에 영향이 없어 updated_at(캐시 키)을 건드리지 않는다.
+    // index 비율·자음 보호는 결과를 바꾸지만 캐시 키에 따로 들어간다(tts.js)
     this.store.run(
-      'UPDATE voice_models SET name = ?, default_pitch = ?, enabled = ?, owner_service = ? WHERE id = ?',
-      next.name, next.pitch, next.enabled, next.owner, row.id,
+      'UPDATE voice_models SET name = ?, default_pitch = ?, enabled = ?, owner_service = ?, index_rate = ?, protect = ? WHERE id = ?',
+      next.name, next.pitch, next.enabled, next.owner, next.indexRate, next.protect, row.id,
     );
     return this.out(this.get(row.id));
   }
@@ -233,6 +260,34 @@ export class VoiceModels {
     await rm(this.modelDir(row.id), { recursive: true, force: true });
     return this.out(row);
   }
+}
+
+/**
+ * 요청 본문을 메모리에 올리지 않고 바로 파일로 흘려 쓴다(pm2 메모리 한도 512MB 보호).
+ * 한도를 넘으면 중단하고 413, 비어 있으면 400. 실패해도 file은 지우지 않는다(부르는 쪽 몫).
+ */
+export async function receiveToFile(req, file, maxBytes) {
+  const declared = Number(req.headers['content-length']);
+  if (declared > maxBytes) throw tooLarge(maxBytes);
+  let size = 0;
+  const limiter = new Transform({
+    transform(chunk, enc, cb) {
+      size += chunk.length;
+      cb(size > maxBytes ? tooLarge(maxBytes) : null, chunk);
+    },
+  });
+  await pipeline(req, limiter, createWriteStream(file, { mode: 0o600 }));
+  if (size === 0) throw new HttpError(400, '파일이 비어 있습니다.', 'EMPTY_FILE');
+  return size;
+}
+
+/** 서버에 있는 파일을 업로드 요청처럼(헤더 + 읽기 스트림) 감싼다 — create/putIndex에 req 대신 넘긴다 */
+export async function fileAsUpload(file) {
+  const st = await stat(file);
+  if (!st.isFile()) throw new Error(`파일이 아닙니다: ${file}`);
+  const stream = createReadStream(file);
+  stream.headers = { 'content-length': String(st.size) };
+  return stream;
 }
 
 function tooLarge(maxBytes) {

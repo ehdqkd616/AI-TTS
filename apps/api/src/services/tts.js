@@ -22,7 +22,9 @@ export class TtsService {
    * 목소리 변환 모델 선택 해석. 피치를 안 주면 모델 기본 피치.
    * ownerService는 부르는 쪽(내부 서비스 이름, 회원이면 null) — 전용 모델을 가려내는 데 쓴다.
    */
-  resolveVoiceModel(voiceModelId, pitch, ownerService = null) {
+  resolveVoiceModel(voiceModelId, pitch, ownerService = null, override = null) {
+    // 관리자 미리 듣기: 라우트가 이미 고른 모델(저장 안 된 설정 포함)을 그대로 쓴다
+    if (override) return { model: override, pitch: pitch == null || pitch === '' ? override.defaultPitch : VoiceModels.validatePitch(pitch) };
     if (!voiceModelId) return { model: null, pitch: 0 };
     if (!this.voiceModels || !this.rvc) throw new HttpError(503, '목소리 변환 기능이 꺼져 있습니다.', 'RVC_DISABLED');
     this.rvc.assertEnabled();
@@ -72,19 +74,19 @@ export class TtsService {
    *   meterCall: 엔진에 요청을 보내기 직전(재시도마다) 호출 — 과금 계측. engineLimit 에러를 던지면 다음 후보로
    */
   async synthesize(
-    { text, locale, voiceId, speed = 1, format = 'mp3', normalizedText, userId, voiceModelId, pitch, ownerService = null },
+    { text, locale, voiceId, speed = 1, format = 'mp3', normalizedText, userId, voiceModelId, pitch, ownerService = null, voiceModelOverride = null },
     { beforeEngine, allowsVoice, meterCall } = {},
   ) {
     this.validate({ text, speed, format });
     if (normalizedText != null) this.validate({ text: normalizedText, speed, format });
-    const conv = this.resolveVoiceModel(voiceModelId, pitch, ownerService);
+    const conv = this.resolveVoiceModel(voiceModelId, pitch, ownerService, voiceModelOverride);
 
     const resolvedLocale = this.resolveLocale(text, locale);
     const candidates = this.voices.resolve(resolvedLocale, voiceId); // ④ 보이스 매핑 (+ fallback 순서)
     const normalized = normalizedText?.trim() || normalize(text, resolvedLocale); // ②
 
     // 모델 파일이 바뀌면(updatedAt) 다른 결과이므로 캐시 키에 포함. 변환 안 쓸 때는 예전 키 그대로(기존 캐시 유지)
-    const rvcKey = conv.model ? { rvc: conv.model.id, v: conv.model.updatedAt, pitch: conv.pitch } : {};
+    const rvcKey = rvcCacheKey(conv);
     const keyFor = (voice) => cacheKeyOf({ normalized, locale: resolvedLocale, voice: voice.id, speed, format, ...rvcKey });
     const base = {
       text, normalized, locale: resolvedLocale, speed, format, charCount: [...normalized].length, userId,
@@ -197,7 +199,7 @@ export class TtsService {
     const candidates = this.voices.resolve(resolvedLocale, voiceId);
     const normalized = segments.map((s) => ({ id: s.id, text: normalize(s.text, resolvedLocale) }));
     const charCount = normalized.reduce((n, s) => n + [...s.text].length, 0);
-    const rvcKey = conv.model ? { rvc: conv.model.id, v: conv.model.updatedAt, pitch: conv.pitch } : {};
+    const rvcKey = rvcCacheKey(conv);
     const keyFor = (voice) => cacheKeyOf({ kind: 'narration', segments: normalized, locale: resolvedLocale, voice: voice.id, speed, gapMs, ...rvcKey });
     const base = {
       text: allText, normalized: normalized.map((s) => s.text).join('\n'), locale: resolvedLocale, speed, format: 'wav', charCount, userId,
@@ -307,4 +309,18 @@ export class TtsService {
       audioUrl: `/api/audio/${key}.${base.format}`,
     };
   }
+}
+
+/**
+ * 변환 결과를 바꾸는 값만 캐시 키에 — 모델 파일(updatedAt)·피치, 그리고 모델별 index 비율·자음 보호.
+ * 모델별 설정이 없으면(서버 기본값) 예전 키 그대로라 기존 캐시가 유지된다.
+ */
+function rvcCacheKey(conv) {
+  const m = conv.model;
+  if (!m) return {};
+  return {
+    rvc: m.id, v: m.updatedAt, pitch: conv.pitch,
+    ...(m.indexRate != null ? { ir: m.indexRate } : {}),
+    ...(m.protect != null ? { pr: m.protect } : {}),
+  };
 }

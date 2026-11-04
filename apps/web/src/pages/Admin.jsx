@@ -2,12 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { fmtDate, STATUS_LABEL } from './format.js';
+import VoiceTraining from './VoiceTraining.jsx';
 
 const TABS = [
   ['dashboard', '대시보드'],
   ['users', '회원 관리'],
   ['generations', '생성 내역'],
   ['voices', '목소리 모델'],
+  ['training', '목소리 학습'],
   ['audit', '감사 로그'],
 ];
 
@@ -25,6 +27,7 @@ export default function AdminPage() {
       {tab === 'users' && <Users initialStatus={params.get('status') ?? ''} />}
       {tab === 'generations' && <Generations />}
       {tab === 'voices' && <VoiceModels />}
+      {tab === 'training' && <VoiceTraining onGoModels={() => setParams({ tab: 'voices' })} />}
       {tab === 'audit' && <Audit />}
     </div>
   );
@@ -485,7 +488,7 @@ function VoiceModels() {
         {data.items.length === 0 ? <p className="empty">아직 등록된 모델이 없습니다.</p> : (
           <ul className="vm-list">
             {data.items.map((m) => (
-              <VoiceModelRow key={m.id} m={m} services={data.services ?? []} act={act} busy={Boolean(progress)} setProgress={setProgress} />
+              <VoiceModelRow key={m.id} m={m} services={data.services ?? []} defaults={data.defaults} act={act} busy={Boolean(progress)} setProgress={setProgress} />
             ))}
           </ul>
         )}
@@ -494,13 +497,29 @@ function VoiceModels() {
   );
 }
 
-function VoiceModelRow({ m, services, act, busy, setProgress }) {
+function VoiceModelRow({ m, services, defaults, act, busy, setProgress }) {
   const [name, setName] = useState(m.name);
   const [pitch, setPitch] = useState(m.defaultPitch);
   const [owner, setOwner] = useState(m.ownerService ?? '');
+  // null = 서버 기본값(.env RVC_INDEX_RATE / RVC_PROTECT)
+  const [indexRate, setIndexRate] = useState(m.indexRate);
+  const [protect, setProtect] = useState(m.protect);
+  const [preview, setPreview] = useState(null); // { url, key } | { loading } | { error }
   // 설정에서 토큰이 사라진 뒤에도 지금 값은 고를 수 있게 남겨 둔다
   const ownerOptions = [...new Set([...services, ...(m.ownerService ? [m.ownerService] : [])])];
-  const dirty = name !== m.name || pitch !== m.defaultPitch || owner !== (m.ownerService ?? '');
+  const dirty = name !== m.name || pitch !== m.defaultPitch || owner !== (m.ownerService ?? '') || indexRate !== m.indexRate || protect !== m.protect;
+  const ir = indexRate ?? defaults?.indexRate ?? 0.75;
+  const pr = protect ?? defaults?.protect ?? 0.33;
+
+  async function listen() {
+    setPreview({ loading: true });
+    try {
+      const r = await api.admin.previewVoiceModel(m.id, { pitch, indexRate: ir, protect: pr });
+      setPreview({ url: r.audioUrl, key: `${pitch}/${ir}/${pr}` });
+    } catch (e) {
+      setPreview({ error: e.message });
+    }
+  }
 
   function uploadIndex(e) {
     const file = e.target.files[0];
@@ -526,6 +545,28 @@ function VoiceModelRow({ m, services, act, busy, setProgress }) {
             ))}
           </select>
         </label>
+        <div className="vm-tune">
+          <label>
+            <span>
+              index 비율 {ir.toFixed(2)} {indexRate === null && '(서버 기본)'} — 높을수록 음색이 닮고, 낮을수록 발음이 또렷
+            </span>
+            <input type="range" min="0" max="1" step="0.05" value={ir} disabled={!m.hasIndex} onChange={(e) => setIndexRate(Number(e.target.value))} />
+          </label>
+          <label>
+            <span>
+              자음 보호 {pr.toFixed(2)} {protect === null && '(서버 기본)'} — 낮을수록 ㅅ·ㅎ·숨소리를 원본대로 (0.5는 끔)
+            </span>
+            <input type="range" min="0" max="0.5" step="0.01" value={pr} onChange={(e) => setProtect(Number(e.target.value))} />
+          </label>
+        </div>
+        <div className="vm-preview small">
+          <button disabled={busy || preview?.loading} onClick={listen}>{preview?.loading ? '만드는 중…' : '▶ 미리 듣기'}</button>
+          {preview?.url && <audio key={preview.key} controls autoPlay src={preview.url} />}
+          {preview?.error && <span className="hint">{preview.error}</span>}
+          {(indexRate !== null || protect !== null) && (
+            <button className="link" onClick={() => (setIndexRate(null), setProtect(null))}>서버 기본값으로</button>
+          )}
+        </div>
         <div className="muted small">
           .pth {fmtMB(m.modelBytes)} · .index {m.hasIndex ? fmtMB(m.indexBytes) : '없음'} · {fmtDate(m.createdAt)}
           {m.ownerService && <span className="tag">{m.ownerService} 전용</span>}
@@ -535,7 +576,7 @@ function VoiceModelRow({ m, services, act, busy, setProgress }) {
       <div className="inline vm-actions">
         <button
           disabled={!dirty || busy}
-          onClick={() => act(() => api.admin.updateVoiceModel(m.id, { name, defaultPitch: pitch, ownerService: owner }), '저장했습니다.')}
+          onClick={() => act(() => api.admin.updateVoiceModel(m.id, { name, defaultPitch: pitch, ownerService: owner, indexRate, protect }), '저장했습니다.')}
         >
           저장
         </button>

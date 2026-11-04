@@ -18,7 +18,8 @@ export function securityHeaders(req, res, next) {
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'DENY',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
-    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+    // 마이크: 관리자 목소리 학습 화면에서 낭독 녹음 (같은 출처만)
+    'Permissions-Policy': 'camera=(), microphone=(self), geolocation=()',
     'Cross-Origin-Opener-Policy': 'same-origin',
   });
   next();
@@ -44,9 +45,9 @@ export function csrfGuard(req, res, next) {
       return res.status(403).json({ error: { code: 'BAD_ORIGIN', message: '허용되지 않은 요청 출처입니다.' } });
     }
   }
-  // 예외: 관리자 목소리 모델 업로드는 파일 본문(application/octet-stream). 이 형식은 교차 출처 폼으로
+  // 예외: 관리자 목소리 모델·학습 녹음 업로드는 파일 본문(application/octet-stream). 이 형식은 교차 출처 폼으로
   // 보낼 수 없고, fetch로 보내려면 CORS 사전 요청이 필요해서(허용 안 함) JSON과 같은 수준으로 막힌다.
-  if (req.path.startsWith('/admin/voice-models') && req.is('application/octet-stream')) return next();
+  if ((req.path.startsWith('/admin/voice-models') || req.path.startsWith('/admin/voice-trainings')) && req.is('application/octet-stream')) return next();
   if (!req.is('application/json')) {
     return res.status(415).json({ error: { code: 'UNSUPPORTED_MEDIA_TYPE', message: 'JSON 요청만 허용됩니다.' } });
   }

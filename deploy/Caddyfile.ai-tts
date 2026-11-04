@@ -21,6 +21,13 @@ ai-tts.hotgarlic.dedyn.io {
 		}
 		reverse_proxy 127.0.0.1:3300
 	}
+	# 관리자 목소리 학습 녹음 업로드(파일 하나 최대 500MB) — 앱이 관리자 여부·크기를 다시 검사
+	handle /api/admin/voice-trainings* {
+		request_body {
+			max_size 520MB
+		}
+		reverse_proxy 127.0.0.1:3300
+	}
 	# 그 밖의 API 요청 본문은 텍스트 JSON뿐 (앱 한도 256KB보다 약간 여유)
 	handle {
 		request_body {

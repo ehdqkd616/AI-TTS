@@ -237,3 +237,58 @@ test('서비스 전용 모델: 회원에게는 없는 것처럼, 그 서비스�
     await scoped.close();
   }
 });
+
+test('모델별 index 비율·자음 보호: 변환 인자와 캐시 키에 반영, 0이면 index를 안 쓴다', async () => {
+  const { body: model } = await upload(admin, 'POST', '/api/admin/voice-models?name=per-model', pth());
+  await upload(admin, 'PUT', `/api/admin/voice-models/${model.id}/index`, Buffer.from('idx'));
+  assert.equal(model.indexRate, null); // 비우면 서버 기본값
+  const bad = await admin.json('PATCH', `/api/admin/voice-models/${model.id}`, { indexRate: 1.5 });
+  assert.equal(bad.body.error.code, 'BAD_INDEX_RATE');
+  assert.equal((await admin.json('PATCH', `/api/admin/voice-models/${model.id}`, { protect: 0.6 })).body.error.code, 'BAD_PROTECT');
+
+  const text = '모델별 설정 확인';
+  const r0 = await user.json('POST', '/api/tts', { text, locale: 'ko-KR', voiceModelId: model.id });
+  assert.equal(r0.status, 200);
+  assert.match((await calls()).at(-1), /--protect 0\.33 .*--index-rate 0\.75/);
+
+  const p = await admin.json('PATCH', `/api/admin/voice-models/${model.id}`, { indexRate: 0.25, protect: 0.2 });
+  assert.equal(p.body.indexRate, 0.25);
+  assert.equal(p.body.protect, 0.2);
+  const r1 = await user.json('POST', '/api/tts', { text, locale: 'ko-KR', voiceModelId: model.id });
+  assert.equal(r1.body.cached, false); // 설정이 바뀌면 캐시 키도 바뀐다
+  assert.match((await calls()).at(-1), /--protect 0\.2 .*--index-rate 0\.25/);
+
+  await admin.json('PATCH', `/api/admin/voice-models/${model.id}`, { indexRate: 0 });
+  await user.json('POST', '/api/tts', { text, locale: 'ko-KR', voiceModelId: model.id });
+  const last = (await calls()).at(-1);
+  assert.ok(!last.includes('--index '), last);
+
+  // null로 되돌리면 서버 기본값
+  const back = await admin.json('PATCH', `/api/admin/voice-models/${model.id}`, { indexRate: null, protect: null });
+  assert.equal(back.body.indexRate, null);
+  await admin.json('DELETE', `/api/admin/voice-models/${model.id}`, {});
+});
+
+test('관리자 미리 듣기: 저장하지 않은 설정으로 변환, 전용 모델도 들을 수 있다', async () => {
+  const scoped = await startApp({ RVC_ROOT: rvcRoot, INTERNAL_API_TOKENS: `shorts:${'s'.repeat(40)}` });
+  try {
+    const a = scoped.client();
+    await a.login(ADMIN.username, ADMIN.password);
+    const { body: model } = await upload(a, 'POST', '/api/admin/voice-models?name=preview&ownerService=shorts&defaultPitch=-7', pth());
+    await upload(a, 'PUT', `/api/admin/voice-models/${model.id}/index`, Buffer.from('idx'));
+    const r = await a.json('POST', `/api/admin/voice-models/${model.id}/preview`, { indexRate: 0.4, protect: 0.25 });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.match(r.body.audioUrl, /^\/api\/audio\/.+\.mp3$/);
+    assert.equal(r.body.pitch, -7);
+    assert.match((await calls()).at(-1), /--pitch -7 .*--protect 0\.25 .*--index-rate 0\.4/);
+    assert.equal((await a.get(r.body.audioUrl)).status, 200);
+    // 저장되지 않는다
+    const saved = (await a.json('GET', '/api/admin/voice-models')).body.items.find((m) => m.id === model.id);
+    assert.equal(saved.indexRate, null);
+    // 회원은 못 쓴다
+    const u = await approvedUser(scoped, a);
+    assert.equal((await u.json('POST', `/api/admin/voice-models/${model.id}/preview`, {})).status, 403);
+  } finally {
+    await scoped.close();
+  }
+});

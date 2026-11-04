@@ -15,11 +15,9 @@
  * 등록 뒤 pm2 재시작은 필요 없다(파일·DB만 보고 쓴다).
  */
 import path from 'node:path';
-import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { Store } from '../apps/api/src/services/store.js';
-import { VoiceModels } from '../apps/api/src/services/voiceModels.js';
+import { VoiceModels, fileAsUpload } from '../apps/api/src/services/voiceModels.js';
 import { RvcConverter } from '../apps/api/src/services/rvc.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -43,13 +41,7 @@ function parseArgs(argv) {
 }
 
 /** voiceModels가 기대하는 모양(헤더 + 읽기 스트림)으로 파일을 감싼다 — 라우트의 req 대신 */
-async function fileAsRequest(file) {
-  const st = await stat(file).catch(() => die(`파일이 없습니다: ${file}`));
-  if (!st.isFile()) die(`파일이 아닙니다: ${file}`);
-  const stream = createReadStream(file);
-  stream.headers = { 'content-length': String(st.size) };
-  return stream;
-}
+const fileAsRequest = (file) => fileAsUpload(file).catch(() => die(`파일이 없거나 파일이 아닙니다: ${file}`));
 
 const args = parseArgs(process.argv.slice(2));
 if (!args.pth || !args.name) die('--pth 와 --name 은 필수입니다. (--index, --owner, --pitch 는 선택)');

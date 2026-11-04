@@ -26,6 +26,13 @@ export class RvcConverter {
     this.logger = logger;
     this.queue = Promise.resolve();
     this.pending = 0;
+    // 목소리 학습(voiceTraining.js)이 GPU를 쓰는 동안 true → 변환을 CPU로 돌린다(느리지만 VRAM 부족으로 실패하지 않는다)
+    this.cpuOnly = false;
+  }
+
+  /** 지금 대기열에 있는 변환이 모두 끝나면 풀리는 Promise — 학습이 GPU를 넘겨받기 전에 기다린다 */
+  idle() {
+    return this.queue;
   }
 
   isEnabled() {
@@ -50,11 +57,16 @@ export class RvcConverter {
   }
 
   #run(args, timeoutMs = this.timeoutMs) {
+    const env = { ...process.env, PYTHONUNBUFFERED: '1', PYTHONPATH: [this.root, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter) };
+    if (this.cpuOnly) {
+      env.CUDA_VISIBLE_DEVICES = ''; // RVC config가 GPU를 못 찾으면 CPU로 추론한다
+      timeoutMs *= 3;
+    }
     return new Promise((resolve, reject) => {
       const proc = spawn(this.python, [path.join('infer', 'cli.py'), ...args], {
         cwd: this.root,
         // `python infer/cli.py`로 실행하면 sys.path[0]이 infer/라서 cli.py 안의 `from infer.…`가 실패한다 → RVC 루트를 모듈 경로에 넣는다
-        env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONPATH: [this.root, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter) },
+        env,
       });
       let stdout = '';
       let stderr = '';
@@ -89,7 +101,8 @@ export class RvcConverter {
   /**
    * WAV 버퍼 → 목소리 변환된 WAV 버퍼
    * @param {Buffer} wav
-   * @param {{pth: string, index: string, hasIndex: boolean}} model
+   * @param {{pth: string, index: string, hasIndex: boolean, indexRate?: number|null, protect?: number|null}} model
+   *   indexRate·protect: 모델별 설정 (없으면 서버 기본값)
    * @param {{pitch?: number}} options 반음 단위
    */
   convert(wav, model, { pitch = 0 } = {}) {
@@ -101,9 +114,11 @@ export class RvcConverter {
         // RVC의 attention은 길이의 제곱으로 GPU 메모리를 쓰고 GTX 1050 Ti는 fp32라, 4GB에서 약 20초를 넘으면 CUDA OOM이 난다.
         // 폴더째 한 프로세스에 넘기면 첫 파일 뒤 GPU 메모리가 풀리지 않아 두 번째부터 OOM이 나므로 프로세스를 나눈다.
         const pieces = splitWavAtSilence(wav, this.chunkSec) ?? [wav];
-        const common = ['--model', model.pth, '--pitch', String(pitch), '--f0-method', this.f0Method, '--protect', String(this.protect), '--format', 'wav', '--overwrite'];
-        // .index가 없으면 index를 쓰지 않는다(없는데 지정하면 cli.py가 실패)
-        if (model.hasIndex && existsSync(model.index)) common.push('--index', model.index, '--index-rate', String(this.indexRate));
+        const protect = model.protect ?? this.protect;
+        const indexRate = model.indexRate ?? this.indexRate;
+        const common = ['--model', model.pth, '--pitch', String(pitch), '--f0-method', this.f0Method, '--protect', String(protect), '--format', 'wav', '--overwrite'];
+        // .index가 없거나 비율이 0이면 index를 쓰지 않는다(없는데 지정하면 cli.py가 실패)
+        if (indexRate > 0 && model.hasIndex && existsSync(model.index)) common.push('--index', model.index, '--index-rate', String(indexRate));
         else common.push('--index-rate', '0');
         const started = Date.now();
         const outs = [];
@@ -114,7 +129,7 @@ export class RvcConverter {
           await this.#run([...common, '--input', input, '--output', output]);
           outs.push(await readFile(output));
         }
-        this.logger.info?.(`RVC done in ${Date.now() - started}ms (pitch ${pitch}${pieces.length > 1 ? `, ${pieces.length} chunks` : ''})`);
+        this.logger.info?.(`RVC done in ${Date.now() - started}ms (pitch ${pitch}${pieces.length > 1 ? `, ${pieces.length} chunks` : ''}${this.cpuOnly ? ', CPU' : ''})`);
         return pieces.length > 1 ? concatWavs(outs) : outs[0];
       } finally {
         await rm(dir, { recursive: true, force: true });

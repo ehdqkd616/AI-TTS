@@ -1,6 +1,14 @@
 import { createApp } from './app.js';
 
-const { app, providers } = await createApp();
+const { app, providers, trainer } = await createApp();
+
+// 종료할 때 돌고 있는 목소리 학습(파이썬, 별도 프로세스 그룹)도 같이 내린다 — 다음 기동 때 '이어서 학습' 가능
+for (const sig of ['SIGINT', 'SIGTERM']) {
+  process.once(sig, () => {
+    trainer.shutdown();
+    process.exit(0);
+  });
+}
 const port = Number(process.env.PORT) || 3001;
 // 기본은 루프백 전용: 외부 접근은 Caddy(HTTPS)를 통해서만
 const host = process.env.HOST || '127.0.0.1';

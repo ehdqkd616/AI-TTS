@@ -104,7 +104,9 @@ export class VoiceModels {
   async #receive(req, dest, maxBytes, check) {
     const declared = Number(req.headers['content-length']);
     if (declared > maxBytes) throw tooLarge(maxBytes);
-    const tmp = `${dest}.${randomBytes(4).toString('hex')}.part`;
+    // 검사(RVC infer/cli.py)가 확장자를 보므로 임시 파일도 원래 확장자로 끝나게 둔다 → model.<난수>.part.pth
+    const ext = path.extname(dest);
+    const tmp = `${dest.slice(0, dest.length - ext.length)}.${randomBytes(4).toString('hex')}.part${ext}`;
     let size = 0;
     const limiter = new Transform({
       transform(chunk, enc, cb) {

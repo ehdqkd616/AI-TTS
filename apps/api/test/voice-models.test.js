@@ -23,10 +23,16 @@ async function makeFakeRvc() {
     `#!/bin/sh
 echo "$@" >> "${root}/calls.log"
 if [ -f "${root}/FAIL" ]; then echo "rvc-cli: error: boom" >&2; exit 1; fi
-in=""; out=""
+in=""; out=""; model=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --list-speakers) echo "0-0"; exit 0 ;;
+    --model) model="$2"; shift ;;
+    # 실제 cli.py와 같이 .pth가 아니면 거절한다 (임시 파일 이름까지 확장자를 지켜야 한다)
+    --list-speakers)
+      case "$model" in
+        *.pth) echo "0-0"; exit 0 ;;
+        *) echo "rvc-cli: error: Model must be a .pth file: $model" >&2; exit 1 ;;
+      esac ;;
     --input) in="$2"; shift ;;
     --output) out="$2"; shift ;;
   esac

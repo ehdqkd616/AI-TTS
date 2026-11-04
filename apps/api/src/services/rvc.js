@@ -21,6 +21,8 @@ export class RvcConverter {
     this.f0Method = env.RVC_F0_METHOD === 'pm' ? 'pm' : 'rmvpe';
     this.indexRate = clamp01(env.RVC_INDEX_RATE, 0.75);
     this.protect = Math.min(0.5, clamp01(env.RVC_PROTECT, 0.33));
+    // 한 번에 변환할 최대 길이(초). 4GB GPU에서 20초는 되고 30초는 OOM이었다 (2026-11-04 측정)
+    this.chunkSec = Math.min(60, Math.max(5, Number(env.RVC_CHUNK_SEC) || 15));
     this.logger = logger;
     this.queue = Promise.resolve();
     this.pending = 0;
@@ -95,31 +97,118 @@ export class RvcConverter {
     return this.#enqueue(async () => {
       const dir = await mkdtemp(path.join(tmpdir(), 'tts-rvc-'));
       try {
-        const input = path.join(dir, 'input.wav');
-        const output = path.join(dir, 'output.wav');
-        await writeFile(input, wav);
-        const args = [
-          '--model', model.pth,
-          '--input', input,
-          '--output', output,
-          '--pitch', String(pitch),
-          '--f0-method', this.f0Method,
-          '--protect', String(this.protect),
-          '--format', 'wav',
-          '--overwrite',
-        ];
+        // 긴 음성은 무음 지점에서 잘라 조각마다 cli.py를 따로 돌린 뒤 이어 붙인다.
+        // RVC의 attention은 길이의 제곱으로 GPU 메모리를 쓰고 GTX 1050 Ti는 fp32라, 4GB에서 약 20초를 넘으면 CUDA OOM이 난다.
+        // 폴더째 한 프로세스에 넘기면 첫 파일 뒤 GPU 메모리가 풀리지 않아 두 번째부터 OOM이 나므로 프로세스를 나눈다.
+        const pieces = splitWavAtSilence(wav, this.chunkSec) ?? [wav];
+        const common = ['--model', model.pth, '--pitch', String(pitch), '--f0-method', this.f0Method, '--protect', String(this.protect), '--format', 'wav', '--overwrite'];
         // .index가 없으면 index를 쓰지 않는다(없는데 지정하면 cli.py가 실패)
-        if (model.hasIndex && existsSync(model.index)) args.push('--index', model.index, '--index-rate', String(this.indexRate));
-        else args.push('--index-rate', '0');
+        if (model.hasIndex && existsSync(model.index)) common.push('--index', model.index, '--index-rate', String(this.indexRate));
+        else common.push('--index-rate', '0');
         const started = Date.now();
-        await this.#run(args);
-        this.logger.info?.(`RVC done in ${Date.now() - started}ms (pitch ${pitch})`);
-        return await readFile(output);
+        const outs = [];
+        for (const [i, piece] of pieces.entries()) {
+          const input = path.join(dir, `input-${i}.wav`);
+          const output = path.join(dir, `output-${i}.wav`);
+          await writeFile(input, piece);
+          await this.#run([...common, '--input', input, '--output', output]);
+          outs.push(await readFile(output));
+        }
+        this.logger.info?.(`RVC done in ${Date.now() - started}ms (pitch ${pitch}${pieces.length > 1 ? `, ${pieces.length} chunks` : ''})`);
+        return pieces.length > 1 ? concatWavs(outs) : outs[0];
       } finally {
         await rm(dir, { recursive: true, force: true });
       }
     });
   }
+}
+
+/** PCM WAV 읽기 — fmt·data 청크만 본다. 16비트 PCM이 아니면 null */
+export function parseWav(buf) {
+  if (buf.length < 12 || buf.toString('ascii', 0, 4) !== 'RIFF' || buf.toString('ascii', 8, 12) !== 'WAVE') return null;
+  let fmt = null;
+  let data = null;
+  for (let off = 12; off + 8 <= buf.length; ) {
+    const id = buf.toString('ascii', off, off + 4);
+    const size = buf.readUInt32LE(off + 4);
+    const body = off + 8;
+    if (id === 'fmt ') {
+      fmt = { format: buf.readUInt16LE(body), channels: buf.readUInt16LE(body + 2), sampleRate: buf.readUInt32LE(body + 4), bits: buf.readUInt16LE(body + 14) };
+    } else if (id === 'data') {
+      data = buf.subarray(body, Math.min(buf.length, body + size));
+      break;
+    }
+    off = body + size + (size % 2);
+  }
+  if (!fmt || !data || ![1, 0xfffe].includes(fmt.format) || fmt.bits !== 16) return null;
+  return { channels: fmt.channels, sampleRate: fmt.sampleRate, bits: 16, data };
+}
+
+/** 16비트 PCM WAV 만들기 */
+export function buildWav({ channels, sampleRate }, data) {
+  const h = Buffer.alloc(44);
+  h.write('RIFF', 0, 'ascii');
+  h.writeUInt32LE(36 + data.length, 4);
+  h.write('WAVEfmt ', 8, 'ascii');
+  h.writeUInt32LE(16, 16);
+  h.writeUInt16LE(1, 20);
+  h.writeUInt16LE(channels, 22);
+  h.writeUInt32LE(sampleRate, 24);
+  h.writeUInt32LE(sampleRate * channels * 2, 28);
+  h.writeUInt16LE(channels * 2, 32);
+  h.writeUInt16LE(16, 34);
+  h.write('data', 36, 'ascii');
+  h.writeUInt32LE(data.length, 40);
+  return Buffer.concat([h, data]);
+}
+
+/**
+ * maxSec보다 긴 16비트 PCM WAV를 조각(WAV 버퍼 배열)으로 나눈다. 짧거나 읽을 수 없는 형식이면 null.
+ * 자르는 곳은 각 조각 끝 maxSec-5초~maxSec 사이에서 20ms 구간 에너지가 가장 작은 곳 — 문장 사이 쉼(gapMs)에 걸린다.
+ */
+export function splitWavAtSilence(buf, maxSec) {
+  const wav = parseWav(buf);
+  if (!wav) return null;
+  const frameBytes = wav.channels * 2;
+  const totalFrames = Math.floor(wav.data.length / frameBytes);
+  const maxFrames = Math.floor(maxSec * wav.sampleRate);
+  if (totalFrames <= maxFrames) return null;
+  const win = Math.max(1, Math.floor(wav.sampleRate * 0.02));
+  const searchFrames = Math.min(Math.floor(5 * wav.sampleRate), maxFrames - win);
+  const energy = (from) => {
+    let sum = 0;
+    for (let f = from; f < from + win; f++) {
+      for (let c = 0; c < wav.channels; c++) sum += Math.abs(wav.data.readInt16LE((f * wav.channels + c) * 2));
+    }
+    return sum;
+  };
+  const chunks = [];
+  let start = 0;
+  while (totalFrames - start > maxFrames) {
+    let best = start + maxFrames - win;
+    let bestE = Infinity;
+    for (let f = start + maxFrames - win; f >= start + maxFrames - searchFrames; f -= win) {
+      const e = energy(f);
+      if (e < bestE) {
+        bestE = e;
+        best = f;
+      }
+    }
+    const cut = best + Math.floor(win / 2);
+    chunks.push(buildWav(wav, wav.data.subarray(start * frameBytes, cut * frameBytes)));
+    start = cut;
+  }
+  chunks.push(buildWav(wav, wav.data.subarray(start * frameBytes, totalFrames * frameBytes)));
+  return chunks;
+}
+
+/** 같은 형식의 16비트 PCM WAV들을 순서대로 이어 붙인다 */
+export function concatWavs(bufs) {
+  const parts = bufs.map((b) => parseWav(b));
+  if (parts.some((p) => !p)) throw new Error('RVC 결과 WAV 형식을 읽지 못했습니다.');
+  const [first] = parts;
+  if (parts.some((p) => p.sampleRate !== first.sampleRate || p.channels !== first.channels)) throw new Error('RVC 결과 조각의 형식이 서로 다릅니다.');
+  return buildWav(first, Buffer.concat(parts.map((p) => p.data)));
 }
 
 function clamp01(v, d) {

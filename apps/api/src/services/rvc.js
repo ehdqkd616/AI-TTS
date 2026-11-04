@@ -51,7 +51,8 @@ export class RvcConverter {
     return new Promise((resolve, reject) => {
       const proc = spawn(this.python, [path.join('infer', 'cli.py'), ...args], {
         cwd: this.root,
-        env: { ...process.env, PYTHONUNBUFFERED: '1' },
+        // `python infer/cli.py`로 실행하면 sys.path[0]이 infer/라서 cli.py 안의 `from infer.…`가 실패한다 → RVC 루트를 모듈 경로에 넣는다
+        env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONPATH: [this.root, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter) },
       });
       let stdout = '';
       let stderr = '';

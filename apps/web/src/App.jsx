@@ -1,9 +1,18 @@
-import { NavLink, Route, Routes, Navigate, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Route, Routes, Navigate, useNavigate } from 'react-router-dom';
 import { RequireAuth, useAuth } from './auth.jsx';
 import TtsPage from './pages/TtsPage.jsx';
 import { LoginPage, SignupPage } from './pages/Auth.jsx';
 import MyPage from './pages/MyPage.jsx';
 import AdminPage from './pages/Admin.jsx';
+import Landing from './components/Landing.jsx';
+
+// 홈(/): 로그인 전에는 서비스 소개, 로그인 후에는 음성 생성 화면
+function Home() {
+  const { loading, user } = useAuth();
+  if (loading) return <div className="page"><p className="empty">불러오는 중…</p></div>;
+  if (!user) return <Landing LinkComponent={Link} />;
+  return <TtsPage />;
+}
 
 function Header() {
   const { user, logout } = useAuth();
@@ -38,7 +47,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
-        <Route path="/" element={<RequireAuth><TtsPage /></RequireAuth>} />
+        <Route path="/" element={<Home />} />
         <Route path="/me" element={<RequireAuth><MyPage /></RequireAuth>} />
         <Route path="/admin" element={<RequireAuth admin><AdminPage /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
